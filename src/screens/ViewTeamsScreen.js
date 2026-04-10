@@ -1,0 +1,520 @@
+import React, { useEffect, useState, useContext } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Modal, TextInput, Image } from 'react-native';
+import { getTeams, deleteTeam, updateTeam } from '../api/teams';
+import { getTeamPlayers, removePlayerFromTeam } from '../api/players';
+import { AuthContext } from '../context/AuthContext';
+
+export default function ViewTeamsScreen({ navigation }) {
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [teamPlayers, setTeamPlayers] = useState([]);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [editingTeam, setEditingTeam] = useState(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const { isGuest } = useContext(AuthContext);
+
+  useEffect(() => {
+    loadTeams();
+  }, []);
+
+  const loadTeams = async () => {
+    try {
+      setLoading(true);
+      const data = await getTeams();
+      setTeams(data);
+    } catch (e) {
+      console.log('Error loading teams', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectTeam = async (team) => {
+    if (selectedTeam?.id === team.id) {
+      setSelectedTeam(null);
+      setTeamPlayers([]);
+      return;
+    }
+
+    setSelectedTeam(team);
+    refreshTeamPlayers(team.id);
+  };
+
+  const refreshTeamPlayers = async (teamId) => {
+    try {
+      setPlayersLoading(true);
+      const data = await getTeamPlayers(teamId);
+      setTeamPlayers(data);
+    } catch (e) {
+      console.log('Failed fetching players', e);
+    } finally {
+      setPlayersLoading(false);
+    }
+  }
+
+  const handleDeleteTeam = (team) => {
+    Alert.alert('Delete Team', `Are you sure you want to delete ${team.name}? This will remove all associated roster data.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            setDeletingId(team.id);
+            await deleteTeam(team.id);
+            if (selectedTeam?.id === team.id) setSelectedTeam(null);
+            loadTeams();
+          } catch (e) {
+            Alert.alert('Error', e?.response?.data?.message || 'Failed deleting team');
+          } finally {
+            setDeletingId(null);
+          }
+        }
+      }
+    ]);
+  };
+
+  const handleRemovePlayerFromTeam = (tp) => {
+    Alert.alert(
+      'Remove Player',
+      `Are you sure you want to remove ${tp.player?.fullName} from ${selectedTeam.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removePlayerFromTeam(selectedTeam.id, tp.playerId);
+              refreshTeamPlayers(selectedTeam.id);
+            } catch (e) {
+              Alert.alert('Error', e?.response?.data?.message || 'Failed removing player');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const submitUpdateTeam = async () => {
+    if (!editingTeam?.name.trim()) return;
+    try {
+      setIsUpdating(true);
+      await updateTeam(editingTeam.id, {
+        name: editingTeam.name,
+        shortName: editingTeam.shortName || undefined,
+      });
+      setEditingTeam(null);
+      loadTeams();
+    } catch (e) {
+      Alert.alert('Error', e?.response?.data?.message || 'Failed updating team');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#1E293B" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Team Analytics</Text>
+        <Text style={styles.subtitle}>{teams.length} Teams Registered</Text>
+      </View>
+
+      <FlatList
+        data={teams}
+        keyExtractor={t => t.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        renderItem={({ item }) => (
+          <View style={[styles.teamCard, deletingId === item.id && { opacity: 0.5 }]}>
+            <TouchableOpacity onPress={() => handleSelectTeam(item)} style={styles.teamHeader}>
+              <View style={styles.teamInfoMain}>
+                <View style={styles.logoContainer}>
+                  <Image source={{ uri: item.logoUrl || 'https://via.placeholder.com/50' }} style={styles.teamLogo} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.teamName}>{item.name}</Text>
+                  {item.shortName && <Text style={styles.teamShortName}>{item.shortName}</Text>}
+                </View>
+              </View>
+
+              <View style={styles.headerRight}>
+                {!isGuest && (
+                  <View style={styles.adminActions}>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => setEditingTeam(item)}>
+                      <Text style={styles.actionEmoji}>✎</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteTeam(item)}>
+                      <Text style={[styles.actionEmoji, { color: '#EF4444' }]}>🗑</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <Text style={styles.expandIcon}>{selectedTeam?.id === item.id ? '▲' : '▼'}</Text>
+              </View>
+            </TouchableOpacity>
+
+            {selectedTeam?.id === item.id && (
+              <View style={styles.playersContainer}>
+                <View style={styles.squadHeader}>
+                  <Text style={styles.squadTitle}>Playing XI & Squad</Text>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countText}>{teamPlayers.length} Players</Text>
+                  </View>
+                </View>
+                {playersLoading ? (
+                  <ActivityIndicator size="small" color="#007AFF" style={{ marginVertical: 20 }} />
+                ) : (
+                  teamPlayers.length > 0 ? (
+                    teamPlayers.map(tp => (
+                      <View key={tp.id} style={styles.playerRow}>
+                        <View style={styles.jerseyBadge}>
+                          <Text style={styles.jerseyText}>{tp.jerseyNumber}</Text>
+                        </View>
+                        <Text style={styles.playerName}>{tp.player?.fullName}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          {tp.isCaptain && (
+                            <View style={styles.captainBadge}>
+                              <Text style={styles.captainText}>CAPTAIN</Text>
+                            </View>
+                          )}
+                          {!isGuest && (
+                            <TouchableOpacity
+                              style={[styles.actionBtn, { marginLeft: 10, padding: 6 }]}
+                              onPress={() => handleRemovePlayerFromTeam(tp)}
+                            >
+                              <Text style={[styles.actionEmoji, { color: '#EF4444', fontSize: 12 }]}>✕</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.emptySquad}>
+                      <Text style={styles.noPlayersText}>No players registered in this squad.</Text>
+                    </View>
+                  )
+                )}
+              </View>
+            )}
+          </View>
+        )}
+      />
+
+      <Modal visible={!!editingTeam} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Update Team Info</Text>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>TEAM NAME</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter team name"
+                value={editingTeam?.name || ''}
+                onChangeText={v => setEditingTeam({ ...editingTeam, name: v })}
+              />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>SHORT NAME</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="E.g. MI, CSK"
+                value={editingTeam?.shortName || ''}
+                onChangeText={v => setEditingTeam({ ...editingTeam, shortName: v })}
+              />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>HOME GROUND</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="E.g. Mumbai, Maharashtra"
+                value={editingTeam?.homeGround || ''}
+                onChangeText={v => setEditingTeam({ ...editingTeam, homeGround: v })}
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setEditingTeam(null)} style={styles.modalCancelBtn}>
+                <Text style={styles.modalCancelText}>Dismiss</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={submitUpdateTeam} style={styles.modalSubmitBtn} disabled={isUpdating}>
+                {isUpdating ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalSubmitText}>Save Changes</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8FAFC'
+  },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  header: {
+    padding: 25,
+    backgroundColor: 'white',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    marginBottom: 20,
+    backgroundColor: '#f9ebfdff',
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#1E293B'
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  teamCard: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    marginHorizontal: 15,
+    marginBottom: 15,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  teamHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+  },
+  teamInfoMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  logoContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  teamLogo: {
+    width: 30,
+    height: 30,
+    resizeMode: 'contain',
+  },
+  teamName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1E293B',
+  },
+  teamShortName: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '700',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  adminActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  actionBtn: {
+    padding: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  actionEmoji: {
+    fontSize: 14,
+  },
+  expandIcon: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginLeft: 5,
+  },
+  playersContainer: {
+    padding: 20,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  squadHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  squadTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+  },
+  countBadge: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  countText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#475569',
+  },
+  playerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: 'white',
+    padding: 10,
+    borderRadius: 12,
+    elevation: 1,
+  },
+  jerseyBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  jerseyText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 10,
+  },
+  playerName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1E293B',
+    flex: 1,
+  },
+  captainBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  captainText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#92400E',
+  },
+  emptySquad: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  noPlayersText: {
+    fontStyle: 'italic',
+    color: '#94A3B8',
+    fontSize: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    padding: 25,
+    borderRadius: 24,
+    elevation: 20,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  inputWrapper: {
+    marginBottom: 15,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#94A3B8',
+    marginBottom: 5,
+    marginLeft: 5,
+  },
+  input: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 15,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1E293B',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    elevation: 4,
+  },
+  modalCancelText: {
+    color: '#EF4444',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  modalSubmitBtn: {
+    flex: 2,
+    backgroundColor: '#34C759',
+    padding: 15,
+    borderRadius: 14,
+    alignItems: 'center',
+    elevation: 4,
+  },
+  modalSubmitText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  }
+});
