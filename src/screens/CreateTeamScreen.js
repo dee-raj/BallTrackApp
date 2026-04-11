@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { createTeam } from '../api/teams';
+import { uploadImage } from '../api/uploads';
 
 export default function CreateTeamScreen({ navigation }) {
   const [name, setName] = useState('');
@@ -9,9 +11,43 @@ export default function CreateTeamScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [logo, setLogo] = useState(null);
 
-  const handleLogoUpload = () => {
-    // Simulated logo selection - in a real app this would use ImagePicker
-    setLogo('https://cdn.dribbble.com/userupload/40684223/file/original-0dd2fd24118489530cbf71b71726a90a.jpg');
+  const handleLogoUpload = async () => {
+    Alert.alert(
+      'Upload Logo',
+      'Choose a logo source',
+      [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+              Alert.alert('Permission Denied', 'We need camera access to take photos.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setLogo(result.assets[0].uri);
+          }
+        },
+        {
+          text: 'Library',
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setLogo(result.assets[0].uri);
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   const handleCreate = async () => {
@@ -25,11 +61,27 @@ export default function CreateTeamScreen({ navigation }) {
     }
     try {
       setLoading(true);
+
+      let finalLogoUrl = logo;
+
+      // If it's a local URI, upload it
+      if (logo.startsWith('file://') || logo.startsWith('content://')) {
+        try {
+          const uploadResult = await uploadImage(logo);
+          finalLogoUrl = uploadResult.url;
+        } catch (uploadErr) {
+          console.log('Logo upload failed', uploadErr);
+          Alert.alert('Upload Failed', 'Could not upload team logo. Please try again.');
+          setLoading(false);
+          return;
+        }
+      }
+
       await createTeam({
         name,
         shortName: shortName || undefined,
         homeGround: homeGround || undefined,
-        logoUrl: logo,
+        logoUrl: finalLogoUrl,
       });
       Alert.alert('Success', 'New team created successfully!', [
         { text: 'OK', onPress: () => navigation.goBack() }
@@ -42,8 +94,8 @@ export default function CreateTeamScreen({ navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -56,7 +108,7 @@ export default function CreateTeamScreen({ navigation }) {
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Identity & Branding</Text>
-              
+
               <View style={styles.logoSection}>
                 <TouchableOpacity style={styles.logoBtn} onPress={handleLogoUpload}>
                   {logo ? (
@@ -110,9 +162,9 @@ export default function CreateTeamScreen({ navigation }) {
               </View>
             </View>
 
-            <TouchableOpacity 
-              style={styles.submitBtn} 
-              onPress={handleCreate} 
+            <TouchableOpacity
+              style={styles.submitBtn}
+              onPress={handleCreate}
               disabled={loading}
             >
               {loading ? (

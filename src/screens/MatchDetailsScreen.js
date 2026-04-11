@@ -630,6 +630,7 @@ const styles = StyleSheet.create({
   modalBtn: {
     flex: 1,
     paddingVertical: 14,
+    paddingHorizontal: 10,
     borderWidth: 2,
     borderColor: '#F1F5F9',
     borderRadius: 14,

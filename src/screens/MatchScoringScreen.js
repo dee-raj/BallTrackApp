@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, FlatList, Image, Dimensions, LayoutAnimation, Platform, UIManager } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView,
+  TouchableOpacity, ActivityIndicator,
+  Alert, Modal, FlatList, Image,
+  Dimensions, LayoutAnimation
+} from 'react-native';
 import { getMatchScoreboard, recordBall, undoBall, declareInnings } from '../api/matches';
 import { getTeamPlayers } from '../api/players';
 
 const { width } = Dimensions.get('window');
-
-// Enable LayoutAnimation for Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export default function MatchScoringScreen({ route, navigation }) {
   const { matchId } = route.params;
@@ -58,14 +58,14 @@ export default function MatchScoringScreen({ route, navigation }) {
     const data = await getMatchScoreboard(matchId);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
     setScoreboard(data);
-    
+
     const newInnings = data?.innings?.find(i => i.status === 'in_progress') || data?.innings?.[data.innings.length - 1];
 
     if (newInnings) {
       if (newInnings.status === 'completed') {
         Alert.alert('Innings Completed!', 'The target has been reached or the overs are finished.', [
-            { text: 'View Report', onPress: () => navigation.navigate('MatchReport', { matchId }) },
-            { text: 'OK' }
+          { text: 'View Report', onPress: () => navigation.navigate('MatchReport', { matchId }) },
+          { text: 'OK' }
         ]);
         return;
       }
@@ -199,18 +199,18 @@ export default function MatchScoringScreen({ route, navigation }) {
   const handleDeclare = () => {
     if (!currentInnings) return;
     Alert.alert('Declare Innings', 'Are you sure you want to end this innings manually?', [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-            text: 'Yes, Declare', 
-            onPress: async () => {
-                try {
-                    await declareInnings(currentInnings.id);
-                    loadData();
-                } catch(e) {
-                    Alert.alert('Error', 'Failed to declare innings');
-                }
-            }
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Yes, Declare',
+        onPress: async () => {
+          try {
+            await declareInnings(currentInnings.id);
+            loadData();
+          } catch (e) {
+            Alert.alert('Error', 'Failed to declare innings');
+          }
         }
+      }
     ]);
   };
 
@@ -259,7 +259,7 @@ export default function MatchScoringScreen({ route, navigation }) {
               <View style={styles.liveIndicator}>
                 <View style={[styles.liveDot, { backgroundColor: currentInnings.status === 'completed' ? '#94A3B8' : '#EF4444' }]} />
                 <Text style={[styles.liveText, { color: currentInnings.status === 'completed' ? '#94A3B8' : '#EF4444' }]}>
-                    {currentInnings.status === 'completed' ? 'FINISH' : 'LIVE'}
+                  {currentInnings.status === 'completed' ? 'FINISH' : 'LIVE'}
                 </Text>
               </View>
             </View>
@@ -272,16 +272,75 @@ export default function MatchScoringScreen({ route, navigation }) {
                 <Text style={styles.overBadgeText}>{currentInnings.oversBowled} OVERS</Text>
               </View>
             </View>
-            
+
+            {/* Current Over ball-by-ball */}
+            <View style={styles.currentOverContainer}>
+              <View style={styles.recentBallsList}>
+                {(() => {
+                  const balls = currentInnings.balls || [];
+                  // Sort by sequence to be safe, though backend handles it
+                  const sortedBalls = [...balls].sort((a, b) => a.sequenceNo - b.sequenceNo);
+                  // Find balls of the most recent over
+                  const latestOver = sortedBalls.length > 0 ? sortedBalls[sortedBalls.length - 1].overNumber : 1;
+                  const currentOverBalls = sortedBalls.filter(b => b.overNumber === latestOver);
+
+                  if (currentOverBalls.length === 0) {
+                    return <Text style={styles.noBallsText}>Start of over {latestOver}</Text>;
+                  }
+
+                  return currentOverBalls.map((ball, idx) => {
+                    let display = ball.runsScored.toString();
+                    let dotColor = '#94A3B8'; // default grey
+                    let textColor = '#fff';
+
+                    if (ball.wicketType) {
+                      display = 'W';
+                      dotColor = '#EF4444'; // red
+                    } else if (ball.ballType === 'wide') {
+                      display = `${ball.extras}wd`;
+                      dotColor = '#F59E0B'; // amber
+                    } else if (ball.ballType === 'no_ball') {
+                      display = `${ball.runsScored}nb`;
+                      dotColor = '#F59E0B';
+                    } else if (ball.runsScored === 4) {
+                      dotColor = '#3B82F6'; // blue
+                    } else if (ball.runsScored === 6) {
+                      dotColor = '#8B5CF6'; // purple
+                    } else if (ball.runsScored === 0) {
+                      display = '•';
+                      textColor = '#94A3B8';
+                      dotColor = 'transparent';
+                    }
+
+                    return (
+                      <View key={ball.id || idx} style={[styles.ballDot, { backgroundColor: dotColor, borderColor: ball.runsScored === 0 ? '#E2E8F0' : dotColor, borderWidth: ball.runsScored === 0 ? 1 : 0 }]}>
+                        <Text style={[styles.ballText, { color: textColor }]}>{display}</Text>
+                      </View>
+                    );
+                  });
+                })()}
+              </View>
+              <View style={styles.overTotalBadge}>
+                <Text style={styles.overTotalText}>
+                  {(() => {
+                    const balls = currentInnings.balls || [];
+                    const latestOver = balls.length > 0 ? Math.max(...balls.map(b => b.overNumber)) : 1;
+                    const runs = balls.filter(b => b.overNumber === latestOver).reduce((sum, b) => sum + b.runsScored + b.extras, 0);
+                    return runs;
+                  })()} runs
+                </Text>
+              </View>
+            </View>
+
             {currentInnings.status !== 'completed' && scoreboard?.matchStatus !== 'finished' && (
-                <View style={styles.targetSection}>
-                    <Text style={styles.targetText}>
-                        RR: {(currentInnings.totalRuns / (Math.max(1, currentInnings.legalBalls) / 6)).toFixed(2)}
-                    </Text>
-                    <TouchableOpacity onPress={() => navigation.navigate('MatchReport', { matchId })}>
-                        <Text style={styles.reportLink}>Full Stats 📈</Text>
-                    </TouchableOpacity>
-                </View>
+              <View style={styles.targetSection}>
+                <Text style={styles.targetText}>
+                  RR: {(currentInnings.totalRuns / (Math.max(1, currentInnings.legalBalls) / 6)).toFixed(2)}
+                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('MatchReport', { matchId })}>
+                  <Text style={styles.reportLink}>Full Stats 📈</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         ) : (
@@ -314,8 +373,8 @@ export default function MatchScoringScreen({ route, navigation }) {
                   {getPlayerName(batsmanId, battingTeamPlayers)}
                 </Text>
                 <View style={styles.cardFooter}>
-                    <Text style={styles.editEmoji}>🏏</Text>
-                    <Text style={styles.tapToChange}>Tap to select</Text>
+                  <Text style={styles.editEmoji}>🏏</Text>
+                  <Text style={styles.tapToChange}>Tap to select</Text>
                 </View>
               </TouchableOpacity>
 
@@ -328,8 +387,8 @@ export default function MatchScoringScreen({ route, navigation }) {
                   {getPlayerName(nonStrikerId, battingTeamPlayers)}
                 </Text>
                 <View style={styles.cardFooter}>
-                    <Text style={styles.editEmoji}>👤</Text>
-                    <Text style={styles.tapToChange}>Tap to select</Text>
+                  <Text style={styles.editEmoji}>👤</Text>
+                  <Text style={styles.tapToChange}>Tap to select</Text>
                 </View>
               </TouchableOpacity>
             </View>
@@ -397,12 +456,12 @@ export default function MatchScoringScreen({ route, navigation }) {
         </View>
 
         {currentInnings?.status === 'completed' && (
-             <TouchableOpacity 
-                style={styles.fullReportBtn} 
-                onPress={() => navigation.navigate('MatchReport', { matchId })}
-            >
-                <Text style={styles.fullReportText}>View Detailed Full Report 📊</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.fullReportBtn}
+            onPress={() => navigation.navigate('MatchReport', { matchId })}
+          >
+            <Text style={styles.fullReportText}>View Detailed Full Report 📊</Text>
+          </TouchableOpacity>
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -435,8 +494,8 @@ export default function MatchScoringScreen({ route, navigation }) {
                       <Text style={styles.playerListNumber}>{item.jerseyNumber || '?'}</Text>
                     </View>
                     <View>
-                        <Text style={styles.playerListName}>{item.player.fullName}</Text>
-                        <Text style={styles.playerListRole}>{item.isCaptain ? 'Captain' : 'Player'}</Text>
+                      <Text style={styles.playerListName}>{item.player.fullName}</Text>
+                      <Text style={styles.playerListRole}>{item.isCaptain ? 'Captain' : 'Player'}</Text>
                     </View>
                   </View>
                   {(batsmanId === item.playerId || nonStrikerId === item.playerId || bowlerId === item.playerId) && (
@@ -557,6 +616,57 @@ const styles = StyleSheet.create({
     color: '#38BDF8',
     fontSize: 14,
     fontWeight: '800',
+  },
+  currentOverContainer: {
+    flexDirection: 'row',
+    marginTop: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    padding: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  recentBallsList: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  ballDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+  },
+  ballText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  noBallsText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+    fontWeight: '600',
+  },
+  overTotalBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    marginLeft: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  overTotalText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#CBD5E1',
+    textTransform: 'uppercase',
   },
   noInningsText: {
     color: 'white',

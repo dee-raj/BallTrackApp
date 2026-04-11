@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Modal, TextInput, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { getTeams, deleteTeam, updateTeam } from '../api/teams';
 import { getTeamPlayers, removePlayerFromTeam } from '../api/players';
+import { uploadImage } from '../api/uploads';
 import { AuthContext } from '../context/AuthContext';
 
 export default function ViewTeamsScreen({ navigation }) {
@@ -12,6 +14,7 @@ export default function ViewTeamsScreen({ navigation }) {
   const [playersLoading, setPlayersLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [editingTeam, setEditingTeam] = useState(null);
+  const [newLogoUri, setNewLogoUri] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const { isGuest } = useContext(AuthContext);
 
@@ -29,6 +32,45 @@ export default function ViewTeamsScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const pickTeamEditLogo = async () => {
+    Alert.alert(
+      'Update Logo',
+      'Choose a logo source',
+      [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+              Alert.alert('Permission Denied', 'We need camera access to take photos.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setNewLogoUri(result.assets[0].uri);
+          }
+        },
+        {
+          text: 'Library',
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setNewLogoUri(result.assets[0].uri);
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   const handleSelectTeam = async (team) => {
@@ -100,11 +142,28 @@ export default function ViewTeamsScreen({ navigation }) {
     if (!editingTeam?.name.trim()) return;
     try {
       setIsUpdating(true);
+      let logoUrl = editingTeam.logoUrl;
+
+      if (newLogoUri) {
+        try {
+          const uploadResult = await uploadImage(newLogoUri);
+          logoUrl = uploadResult.url;
+        } catch (uploadErr) {
+          console.log('Update logo failed', uploadErr);
+          Alert.alert('Update Failed', 'Could not upload new team logo.');
+          setIsUpdating(false);
+          return;
+        }
+      }
+
       await updateTeam(editingTeam.id, {
         name: editingTeam.name,
         shortName: editingTeam.shortName || undefined,
+        homeGround: editingTeam.homeGround || undefined,
+        logoUrl: logoUrl,
       });
       setEditingTeam(null);
+      setNewLogoUri(null);
       loadTeams();
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.message || 'Failed updating team');
@@ -125,7 +184,7 @@ export default function ViewTeamsScreen({ navigation }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Team Analytics</Text>
-        <Text style={styles.subtitle}>{teams.length} Teams Registered</Text>
+        <Text style={styles.subtitle}>Total Registered Teams: <Text style={{ fontWeight: 'bold', color: '#128612ff', fontSize: 18 }}>{teams?.length}</Text></Text>
       </View>
 
       <FlatList
@@ -133,10 +192,11 @@ export default function ViewTeamsScreen({ navigation }) {
         keyExtractor={t => t.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <View style={[styles.teamCard, deletingId === item.id && { opacity: 0.5 }]}>
             <TouchableOpacity onPress={() => handleSelectTeam(item)} style={styles.teamHeader}>
               <View style={styles.teamInfoMain}>
+                <Text style={styles.teamNumber}>{index + 1}.</Text>
                 <View style={styles.logoContainer}>
                   <Image source={{ uri: item.logoUrl || 'https://via.placeholder.com/50' }} style={styles.teamLogo} />
                 </View>
@@ -211,7 +271,25 @@ export default function ViewTeamsScreen({ navigation }) {
       <Modal visible={!!editingTeam} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Update Team Info</Text>
+            <View style={styles.modalInnerHeader}>
+              <Text style={styles.modalTitle}>Update Team Info</Text>
+              <TouchableOpacity onPress={() => { setEditingTeam(null); setNewLogoUri(null); }}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.editLogoPicker} onPress={pickTeamEditLogo}>
+              {newLogoUri ? (
+                <Image source={{ uri: newLogoUri }} style={styles.editLogoPreview} />
+              ) : editingTeam?.logoUrl ? (
+                <Image source={{ uri: editingTeam.logoUrl }} style={styles.editLogoPreview} />
+              ) : (
+                <View style={styles.editLogoPlaceholder}>
+                  <Text style={styles.editLogoEmoji}>🛡️</Text>
+                  <Text style={styles.editLogoBtnText}>Change Logo</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>TEAM NAME</Text>
@@ -316,6 +394,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+  },
+  teamNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    marginRight: 12,
   },
   logoContainer: {
     width: 44,
@@ -460,8 +544,49 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#1E293B',
-    marginBottom: 20,
     textAlign: 'center',
+  },
+  modalInnerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  closeText: {
+    fontSize: 18,
+    color: '#64748B',
+    padding: 5,
+  },
+  editLogoPicker: {
+    alignSelf: 'center',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editLogoPreview: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  editLogoPlaceholder: {
+    alignItems: 'center',
+  },
+  editLogoEmoji: {
+    fontSize: 24,
+    marginBottom: 2,
+  },
+  editLogoBtnText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#64748B',
   },
   inputWrapper: {
     marginBottom: 15,

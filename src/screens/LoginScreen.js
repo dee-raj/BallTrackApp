@@ -1,7 +1,13 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions,
+  ScrollView, TouchableWithoutFeedback, Keyboard
+} from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const { width, height } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -16,12 +22,17 @@ export default function LoginScreen() {
       return;
     }
 
+    const isValidEmail = (email) => /\S+@\S+\.\S+/.test(email);
+    if (!isValidEmail(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email');
+      return;
+    }
+
     setIsLoading(true);
     try {
       await login(email, password);
     } catch (error) {
-      console.log({ error });
-      Alert.alert('Login failed', error?.response?.data?.message || error.message);
+      Alert.alert('Login failed', error?.response?.data?.message || 'Check your credentials');
     } finally {
       setIsLoading(false);
     }
@@ -29,44 +40,93 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.formContainer}>
-        <Text style={styles.title}>Let's Login</Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={isShowingPass}
-        />
-        <TouchableOpacity style={styles.eyeButton} onPress={() => setIsShowingPass(!isShowingPass)}>
-          <Text>{!isShowingPass ? 'Hide' : 'Show'}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={isLoading}>
-          {isLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Login</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.button, styles.guestButton]}
-          onPress={continueAsGuest}
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.flex}
         >
-          <Text style={[styles.buttonText, styles.guestText]}>Continue as Audience</Text>
-        </TouchableOpacity>
-      </View>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Header / Logo Section */}
+            <View style={styles.headerSection}>
+              <View style={styles.logoCircle}>
+                <Text style={styles.logoEmoji}>🏏</Text>
+              </View>
+              <Text style={styles.appName}>BallTrack</Text>
+              <Text style={styles.tagline}>“Every Ball Matters.”</Text>
+            </View>
+
+            {/* Audience First Section */}
+            <View style={styles.audienceSection}>
+              <Text style={styles.audienceTitle}>Catch the Live Action!</Text>
+              <Text style={styles.audienceSub}>Join thousands watching the match live.</Text>
+              <TouchableOpacity
+                style={styles.primaryGuestBtn}
+                onPress={continueAsGuest}
+                disabled={isLoading}
+              >
+                <Text style={styles.primaryGuestText}>Watch Now as Audience 🏟️</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR LOGIN AS OFFICIAL</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Scorer Login Section */}
+            <View style={styles.loginForm}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>OFFICIAL EMAIL</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="name@balltrack.com"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>SECURE PASSWORD</Text>
+                <View style={styles.passwordWrapper}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="••••••••"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={isShowingPass}
+                    placeholderTextColor="#94A3B8"
+                  />
+                  <TouchableOpacity 
+                    style={styles.eyeToggle} 
+                    onPress={() => setIsShowingPass(!isShowingPass)}
+                  >
+                    <Text style={styles.eyeText}>{isShowingPass ? 'SHOW' : 'HIDE'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.loginBtn, isLoading && styles.disabledBtn]}
+                onPress={handleLogin}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.loginBtnText}>Proceed to Scoring Table 🔐</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 }
@@ -74,58 +134,169 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F8FAFC',
+  },
+  flex: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 30,
+    paddingBottom: 40,
     justifyContent: 'center',
   },
-  formContainer: {
-    padding: 20,
-    backgroundColor: 'white',
-    margin: 20,
-    borderRadius: 10,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  headerSection: {
+    alignItems: 'center',
+    marginTop: height * 0.05,
+    marginBottom: 40,
   },
-  title: {
-    fontSize: 24,
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#3B82F6',
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    marginBottom: 15,
+  },
+  logoEmoji: {
+    fontSize: 40,
+  },
+  appName: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: '#1E293B',
+    letterSpacing: -1,
+  },
+  tagline: {
+    fontSize: 14,
+    color: '#3B82F6',
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginTop: 5,
+  },
+  audienceSection: {
+    backgroundColor: 'white',
+    borderRadius: 24,
+    padding: 25,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    marginBottom: 30,
+  },
+  audienceTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
     textAlign: 'center',
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
-    fontSize: 16,
+  audienceSub: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 20,
   },
-  eyeButton: {
-    position: 'absolute',
-    right: 30,
-    top: 155,
-    zIndex: 1,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
+  primaryGuestBtn: {
+    backgroundColor: '#1E293B',
+    width: '100%',
+    paddingVertical: 18,
+    borderRadius: 16,
     alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
   },
-  buttonText: {
-    color: '#fff',
+  primaryGuestText: {
+    color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  guestButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    marginTop: 15,
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
   },
-  guestText: {
-    color: '#007AFF',
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  dividerText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#94A3B8',
+    marginHorizontal: 15,
+  },
+  loginForm: {
+    width: '100%',
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#64748B',
+    letterSpacing: 1,
+    marginBottom: 8,
+    marginLeft: 5,
+  },
+  input: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    borderRadius: 14,
+    fontSize: 15,
+    color: '#1E293B',
+    fontWeight: 'bold',
+  },
+  passwordWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingRight: 15,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 16,
+    fontSize: 15,
+    color: '#1E293B',
+    fontWeight: 'bold',
+  },
+  eyeToggle: {
+    padding: 5,
+  },
+  eyeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#3B82F6',
+  },
+  loginBtn: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  disabledBtn: {
+    opacity: 0.6,
+  },
+  loginBtnText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
 });

@@ -4,6 +4,8 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput, Touchab
 import apiClient from '../api/client';
 import { AuthContext } from '../context/AuthContext';
 import { deletePlayer, updatePlayer } from '../api/players';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadImage } from '../api/uploads';
 
 // Memoized Helper function for age
 const calculateAge = (dob) => {
@@ -18,12 +20,13 @@ const calculateAge = (dob) => {
   return age;
 };
 
-const PlayerCard = React.memo(({ item, isGuest, onEdit, onDelete, isDeleting }) => {
+const PlayerCard = React.memo(({ item, index, isGuest, onEdit, onDelete, isDeleting }) => {
   const playerAge = useMemo(() => calculateAge(item.dateOfBirth), [item.dateOfBirth]);
   const dobString = useMemo(() => item.dateOfBirth ? item.dateOfBirth.split('T')[0] : 'N/A', [item.dateOfBirth]);
 
   return (
     <View style={[styles.playerCard, isDeleting && { opacity: 0.5 }]}>
+      <Text style={styles.playerNumber}>{index + 1}.</Text>
       <View style={styles.avatarContainer}>
         {item.photoUrl ? (
           <Image source={{ uri: item.photoUrl }} style={styles.avatarImage} />
@@ -44,11 +47,11 @@ const PlayerCard = React.memo(({ item, isGuest, onEdit, onDelete, isDeleting }) 
 
       {!isGuest && (
         <View style={styles.adminActions}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onEdit(item)}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b8d3ffff' }]} onPress={() => onEdit(item)}>
             <Text style={styles.actionEmoji}>✎</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onDelete(item)}>
-            <Text style={[styles.actionEmoji, { color: '#EF4444' }]}>🗑</Text>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#ffddddff' }]} onPress={() => onDelete(item)}>
+            <Text style={styles.actionEmoji}>🗑</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -62,6 +65,7 @@ export default function PlayersListScreen() {
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState(null);
   const [editingPlayer, setEditingPlayer] = useState(null);
+  const [newPhotoUri, setNewPhotoUri] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const { isGuest } = useContext(AuthContext);
 
@@ -80,6 +84,45 @@ export default function PlayersListScreen() {
       setLoading(false);
     }
   }, []);
+
+  const pickEditImage = async () => {
+    Alert.alert(
+      'Update Photo',
+      'Choose a photo source',
+      [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+              Alert.alert('Permission Denied', 'We need camera access to take photos.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setNewPhotoUri(result.assets[0].uri);
+          }
+        },
+        {
+          text: 'Library',
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setNewPhotoUri(result.assets[0].uri);
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
 
   const handleDeletePlayer = useCallback((player) => {
     Alert.alert('Delete Player', `Are you sure you want to permanently delete ${player.fullName}? This cannot be undone.`, [
@@ -104,20 +147,38 @@ export default function PlayersListScreen() {
     if (!editingPlayer?.fullName.trim()) return;
     try {
       setIsUpdating(true);
+      let photoUrl = editingPlayer.photoUrl;
+
+      if (newPhotoUri) {
+        try {
+          const uploadResult = await uploadImage(newPhotoUri);
+          photoUrl = uploadResult.url;
+        } catch (err) {
+          Alert.alert('Upload Error', 'Failed to upload new photo. Continue anyway?', [
+            { text: 'Cancel', style: 'cancel', onPress: () => { throw new Error('Abort') } },
+            { text: 'Yes', onPress: () => { } }
+          ]);
+        }
+      }
+
       await updatePlayer(editingPlayer.id, {
         fullName: editingPlayer.fullName,
         dateOfBirth: editingPlayer.dateOfBirth ?? null,
         email: editingPlayer.email ?? null,
         phone: editingPlayer.phone ?? null,
+        photoUrl: photoUrl,
       });
       setEditingPlayer(null);
+      setNewPhotoUri(null);
       fetchPlayers();
     } catch (e) {
-      Alert.alert('Error', e?.response?.data?.message || 'Failed updating player');
+      if (e.message !== 'Abort') {
+        Alert.alert('Error', e?.response?.data?.message || 'Failed updating player');
+      }
     } finally {
       setIsUpdating(false);
     }
-  }, [editingPlayer, fetchPlayers]);
+  }, [editingPlayer, newPhotoUri, fetchPlayers]);
 
   const filteredPlayers = useMemo(() => {
     return players.filter(p =>
@@ -125,9 +186,10 @@ export default function PlayersListScreen() {
     );
   }, [players, search]);
 
-  const renderItem = useCallback(({ item }) => (
+  const renderItem = useCallback(({ item, index }) => (
     <PlayerCard
       item={item}
+      index={index}
       isGuest={isGuest}
       onEdit={setEditingPlayer}
       onDelete={handleDeletePlayer}
@@ -147,7 +209,7 @@ export default function PlayersListScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Player Directory</Text>
-        <Text style={styles.subtitle}>{players.length} Total Registered</Text>
+        <Text style={styles.subtitle}>Total <Text style={{ fontWeight: 'bold', color: '#15AF24', fontSize: 20 }}>{players.length}</Text> Registered</Text>
       </View>
 
       <View style={styles.searchContainer}>
@@ -183,10 +245,23 @@ export default function PlayersListScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Update Player Info</Text>
-              <TouchableOpacity onPress={() => setEditingPlayer(null)}>
+              <TouchableOpacity onPress={() => { setEditingPlayer(null); setNewPhotoUri(null); }}>
                 <Text style={styles.closeModalText}>✕</Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity style={styles.photoPicker} onPress={pickEditImage}>
+              {newPhotoUri ? (
+                <Image source={{ uri: newPhotoUri }} style={styles.selectedPhoto} />
+              ) : editingPlayer?.photoUrl ? (
+                <Image source={{ uri: editingPlayer.photoUrl }} style={styles.selectedPhoto} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Text style={styles.photoEmoji}>📸</Text>
+                  <Text style={styles.photoActionText}>Change Photo</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>FULL NAME</Text>
@@ -331,6 +406,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F1F5F9',
   },
+  playerNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    marginRight: 12,
+  },
   avatarContainer: {
     marginRight: 15,
   },
@@ -358,7 +439,8 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 17,
     fontWeight: 'bold',
-    color: '#1E293B'
+    color: '#1E293B',
+    textTransform: 'capitalize'
   },
   detailsRow: {
     flexDirection: 'row',
@@ -371,11 +453,12 @@ const styles = StyleSheet.create({
     marginRight: 15,
   },
   adminActions: {
-    flexDirection: 'row',
-    alignItems: 'center'
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
   },
   actionBtn: {
-    padding: 8,
+    padding: 10,
     backgroundColor: '#F1F5F9',
     borderRadius: 8,
     marginLeft: 8,
@@ -445,6 +528,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1E293B',
+  },
+  photoPicker: {
+    alignSelf: 'center',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedPhoto: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  photoPlaceholder: {
+    alignItems: 'center',
+  },
+  photoEmoji: {
+    fontSize: 24,
+    marginBottom: 2,
+  },
+  photoActionText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#64748B',
   },
   modalActions: {
     gap: 8,

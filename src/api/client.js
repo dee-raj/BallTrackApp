@@ -1,9 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// In Expo, use your local IP to connect to the backend if running on physical device,
-// or 10.0.2.2 for Android emulator, or localhost for iOS simulator.
-export const BASE_URL = 'http://192.168.1.10:3000/api';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.15:3000/api';
 
 const apiClient = axios.create({
   baseURL: BASE_URL,

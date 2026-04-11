@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { getTeams } from '../api/teams';
 import { createPlayer, addPlayerToTeam, getPlayers } from '../api/players';
+import { uploadImage } from '../api/uploads';
 
 export default function AddPlayerScreen({ navigation }) {
   const [mode, setMode] = useState('new'); // 'new' | 'existing'
@@ -13,6 +15,7 @@ export default function AddPlayerScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [jerseyNumber, setJerseyNumber] = useState('');
+  const [photoUri, setPhotoUri] = useState(null);
 
   const [teams, setTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState('');
@@ -40,6 +43,45 @@ export default function AddPlayerScreen({ navigation }) {
     }
   };
 
+  const pickImage = async () => {
+    Alert.alert(
+      'Upload Photo',
+      'Choose a photo source',
+      [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+              Alert.alert('Permission Denied', 'We need camera access to take photos.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setPhotoUri(result.assets[0].uri);
+          }
+        },
+        {
+          text: 'Library',
+          onPress: async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+            if (!result.canceled) setPhotoUri(result.assets[0].uri);
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
   const handleCreate = async () => {
     if (!jerseyNumber || !selectedTeamId) {
       Alert.alert('Error', 'Please select a team and enter a jersey number.');
@@ -60,13 +102,36 @@ export default function AddPlayerScreen({ navigation }) {
       setLoading(true);
 
       let targetPlayerId = selectedGlobalPlayerId;
+      let uploadedUrl = undefined;
 
       if (mode === 'new') {
+        // Upload photo if selected
+        if (photoUri) {
+          try {
+            const uploadResult = await uploadImage(photoUri);
+            uploadedUrl = uploadResult.url;
+          } catch (uploadErr) {
+            console.log('Upload failed', uploadErr);
+            // We can choose to continue or abort. Let's warn the user.
+            const proceed = await new Promise(resolve => {
+              Alert.alert('Upload Failed', 'Photo could not be uploaded. Proceed without photo?', [
+                { text: 'Cancel', onPress: () => resolve(false), style: 'cancel' },
+                { text: 'Yes, Proceed', onPress: () => resolve(true) }
+              ]);
+            });
+            if (!proceed) {
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
         const player = await createPlayer({
           fullName,
           phone: phone || undefined,
           email: email || undefined,
-          dateOfBirth: dateOfBirth || undefined
+          dateOfBirth: dateOfBirth || undefined,
+          photoUrl: uploadedUrl
         });
         targetPlayerId = player.id;
       }
@@ -110,6 +175,17 @@ export default function AddPlayerScreen({ navigation }) {
 
               {mode === 'new' ? (
                 <View>
+                  <TouchableOpacity style={styles.photoPicker} onPress={pickImage}>
+                    {photoUri ? (
+                      <Image source={{ uri: photoUri }} style={styles.selectedPhoto} />
+                    ) : (
+                      <View style={styles.photoPlaceholder}>
+                        <Text style={styles.photoEmoji}>📸</Text>
+                        <Text style={styles.photoActionText}>Add Photo</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>FULL NAME</Text>
                     <TextInput
@@ -308,6 +384,37 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  photoPicker: {
+    alignSelf: 'center',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 25,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedPhoto: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  photoPlaceholder: {
+    alignItems: 'center',
+  },
+  photoEmoji: {
+    fontSize: 30,
+    marginBottom: 4,
+  },
+  photoActionText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#64748B',
   },
   inputGroup: {
     marginBottom: 15,
