@@ -1,37 +1,149 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, TouchableOpacity } from 'react-native';
-import { getInningsScoreboard } from '../api/matches';
+import {
+  View, Text, StyleSheet, ScrollView,
+  ActivityIndicator, Image, Dimensions, TouchableOpacity
+} from 'react-native';
+import { getInningsScoreboard, getMatchPerformance } from '../api/matches';
+import { socket, connectSocket, disconnectSocket, joinMatchRoom, leaveMatchRoom } from '../api/socket';
 
 const { width } = Dimensions.get('window');
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+const WICKET_LABEL = {
+  bowled:            'b',
+  caught:            'c &b',
+  lbw:               'lbw',
+  run_out:           'run out',
+  stumped:           'st',
+  hit_wicket:        'hit wkt',
+  handled_ball:      'handled ball',
+  obstructing_field: 'obstr. field',
+  timed_out:         'timed out',
+};
+
+function dismissalText(b) {
+  if (!b.dismissed) return 'not out';
+  const wt = WICKET_LABEL[b.wicketType] || b.wicketType;
+  if (b.wicketType === 'caught' && b.fielderName && b.bowlerName) {
+    return `c ${b.fielderName} b ${b.bowlerName}`;
+  }
+  if (b.wicketType === 'stumped' && b.fielderName && b.bowlerName) {
+    return `st ${b.fielderName} b ${b.bowlerName}`;
+  }
+  if (b.wicketType === 'run_out' && b.fielderName) {
+    return `run out (${b.fielderName})`;
+  }
+  if (b.bowlerName) return `${wt} ${b.bowlerName}`;
+  return wt;
+}
+
+// ── Batting scorecard table ──────────────────────────────────────────────────
+function BattingScorecard({ scorecard, teamName }) {
+  if (!scorecard || scorecard.length === 0) return null;
+  return (
+    <View style={styles.scorecardCard}>
+      <View style={styles.scorecardHeader}>
+        <Text style={styles.scorecardTeam}>{teamName} — Batting</Text>
+      </View>
+      {/* Column headers */}
+      <View style={[styles.scRow, styles.scHeaderRow]}>
+        <Text style={[styles.scCell, styles.scPlayerCell, styles.scHeaderText]}>Batsman</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>R</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>B</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>4s</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>6s</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>SR</Text>
+      </View>
+      {scorecard.map((b, idx) => (
+        <View key={b.playerId} style={[styles.scRow, idx % 2 === 1 && styles.scRowAlt]}>
+          <View style={styles.scPlayerCell}>
+            <Text style={styles.scPlayerName} numberOfLines={1}>{b.playerName}</Text>
+            <Text style={styles.scDismissal} numberOfLines={1}>{dismissalText(b)}</Text>
+          </View>
+          <Text style={[styles.scCellNum, b.runs >= 50 && styles.scHighlight]}>{b.runs}</Text>
+          <Text style={styles.scCellNum}>{b.balls}</Text>
+          <Text style={styles.scCellNum}>{b.fours}</Text>
+          <Text style={styles.scCellNum}>{b.sixes}</Text>
+          <Text style={styles.scCellNum}>{b.strikeRate}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ── Bowling scorecard table ───────────────────────────────────────────────────
+function BowlingScorecard({ scorecard, teamName }) {
+  if (!scorecard || scorecard.length === 0) return null;
+  return (
+    <View style={styles.scorecardCard}>
+      <View style={[styles.scorecardHeader, { backgroundColor: '#312E81' }]}>
+        <Text style={styles.scorecardTeam}>{teamName} — Bowling</Text>
+      </View>
+      <View style={[styles.scRow, styles.scHeaderRow]}>
+        <Text style={[styles.scCell, styles.scPlayerCell, styles.scHeaderText]}>Bowler</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>O</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>M</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>R</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>W</Text>
+        <Text style={[styles.scCellNum, styles.scHeaderText]}>Econ</Text>
+      </View>
+      {scorecard.map((b, idx) => (
+        <View key={b.playerId} style={[styles.scRow, idx % 2 === 1 && styles.scRowAlt]}>
+          <View style={styles.scPlayerCell}>
+            <Text style={styles.scPlayerName} numberOfLines={1}>{b.playerName}</Text>
+          </View>
+          <Text style={styles.scCellNum}>{b.oversDisplay}</Text>
+          <Text style={styles.scCellNum}>{b.maidens}</Text>
+          <Text style={styles.scCellNum}>{b.runsConceded}</Text>
+          <Text style={[styles.scCellNum, b.wickets >= 3 && styles.scHighlight]}>{b.wickets}</Text>
+          <Text style={styles.scCellNum}>{b.economy}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function MatchReportScreen({ route }) {
-  const { matchId } = route.params;
-  const [loading, setLoading] = useState(true);
-  const [innings1, setInnings1] = useState(null);
-  const [innings2, setInnings2] = useState(null);
+  const { matchId }   = route.params;
+  const [loading, setLoading]     = useState(true);
+  const [innings1, setInnings1]   = useState(null);
+  const [innings2, setInnings2]   = useState(null);
+  const [perfData, setPerfData]   = useState(null);
   const [expandedSections, setExpandedSections] = useState({
-    summary_1: true,
-    overs_1: true,
-    summary_2: true,
-    overs_2: true
+    batting_1: true, bowling_1: true, overs_1: false,
+    batting_2: true, bowling_2: true, overs_2: false,
   });
   const [expandedOvers, setExpandedOvers] = useState({});
 
-  useEffect(() => {
-    loadReport();
+  useEffect(() => { 
+    loadReport(); 
+    
+    // Realtime setup
+    connectSocket();
+    joinMatchRoom(matchId);
+
+    const handleUpdate = () => {
+      console.log('Realtime update received for report');
+      loadReportSilently();
+    };
+
+    socket.on('ball:added', handleUpdate);
+    socket.on('ball:removed', handleUpdate);
+    socket.on('innings:end', handleUpdate);
+
+    return () => {
+      socket.off('ball:added', handleUpdate);
+      socket.off('ball:removed', handleUpdate);
+      socket.off('innings:end', handleUpdate);
+      leaveMatchRoom(matchId);
+    };
   }, [matchId]);
 
   const loadReport = async () => {
     try {
       setLoading(true);
-      const data1 = await getInningsScoreboard(matchId, 1);
-      setInnings1(data1);
-      try {
-        const data2 = await getInningsScoreboard(matchId, 2);
-        setInnings2(data2);
-      } catch (e) {
-        // Second innings might not exist or failed
-      }
+      await loadReportSilently();
     } catch (e) {
       console.log('Failed to fetch detailed report: ', e);
     } finally {
@@ -39,19 +151,26 @@ export default function MatchReportScreen({ route }) {
     }
   };
 
-  const toggleSection = (section) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
+  const loadReportSilently = async () => {
+    try {
+      const [data1, perf] = await Promise.all([
+        getInningsScoreboard(matchId, 1),
+        getMatchPerformance(matchId),
+      ]);
+      setInnings1(data1);
+      setPerfData(perf);
+      try { 
+        setInnings2(await getInningsScoreboard(matchId, 2)); 
+      } catch (_) {}
+    } catch (e) {
+      console.log('Silent report load failed', e);
+    }
   };
 
-  const toggleOver = (innNum, overNum) => {
-    const key = `${innNum}_${overNum}`;
-    setExpandedOvers(prev => ({
-      ...prev,
-      [key]: prev[key] === undefined ? false : !prev[key]
-    }));
+  const toggleSection = (k) => setExpandedSections(p => ({ ...p, [k]: !p[k] }));
+  const toggleOver    = (inn, over) => {
+    const key = `${inn}_${over}`;
+    setExpandedOvers(p => ({ ...p, [key]: p[key] === undefined ? false : !p[key] }));
   };
 
   if (loading) {
@@ -62,35 +181,34 @@ export default function MatchReportScreen({ route }) {
     );
   }
 
+  // ── Current-over timeline ──────────────────────────────────────────────────
   const renderOverTimeline = (balls, inningsNum) => {
-    // Group balls by overNumber
     const grouped = balls.reduce((acc, ball) => {
       acc[ball.overNumber] = acc[ball.overNumber] || [];
       acc[ball.overNumber].push(ball);
       return acc;
     }, {});
-
     const sortedOvers = Object.keys(grouped).sort((a, b) => parseInt(a) - parseInt(b));
+    const isExpanded  = expandedSections[`overs_${inningsNum}`];
 
     return (
       <View style={styles.sectionWrapper}>
-        <TouchableOpacity
-          style={styles.sectionHeader}
-          onPress={() => toggleSection(`overs_${inningsNum}`)}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(`overs_${inningsNum}`)} activeOpacity={0.7}>
           <Text style={styles.sectionTitleText}>Overs Timeline</Text>
+          <Text style={styles.expandIconSmall}>{isExpanded ? '▲' : '▼'}</Text>
         </TouchableOpacity>
 
-        {sortedOvers.map(overNumber => {
-          const overBalls = grouped[overNumber];
-          const overKey = `${inningsNum}_${overNumber}`;
-          const isOverExpanded = expandedOvers[overKey] !== false; // Default to true
+        {isExpanded && sortedOvers.map(overNumber => {
+          const overBalls   = grouped[overNumber];
+          const overKey     = `${inningsNum}_${overNumber}`;
+          const isOverExp   = expandedOvers[overKey] !== false;
+          const overRuns    = overBalls.reduce((s, b) => s + b.runsScored + b.extras, 0);
+          const overWickets = overBalls.filter(b => b.wicketType).length;
 
           return (
-            <View key={overNumber} style={[styles.overCard, !isOverExpanded && { paddingBottom: 5 }]}>
+            <View key={overNumber} style={[styles.overCard, !isOverExp && { paddingBottom: 5 }]}>
               <TouchableOpacity
-                style={[styles.overHeader, !isOverExpanded && { borderBottomWidth: 0, marginBottom: 0 }]}
+                style={[styles.overHeader, !isOverExp && { borderBottomWidth: 0, marginBottom: 0 }]}
                 onPress={() => toggleOver(inningsNum, overNumber)}
                 activeOpacity={0.7}
               >
@@ -98,35 +216,36 @@ export default function MatchReportScreen({ route }) {
                   <Text style={styles.overTitle}>OVER {overNumber}</Text>
                 </View>
                 <View style={styles.overStatsBadge}>
-                  <Text style={styles.overStatsText}>
-                    {overBalls.reduce((sum, b) => sum + b.runsScored, 0)} Runs
-                  </Text>
+                  <Text style={styles.overStatsText}>{overRuns} Runs {overWickets > 0 ? `· ${overWickets}W` : ''}</Text>
                 </View>
-                <Text style={[styles.expandIconSmall, { marginLeft: 10 }]}>{isOverExpanded ? '▲' : '▼'}</Text>
+                <Text style={[styles.expandIconSmall, { marginLeft: 10 }]}>{isOverExp ? '▲' : '▼'}</Text>
               </TouchableOpacity>
 
-              {isOverExpanded && (
+              {isOverExp && (
                 <View style={styles.ballRow}>
                   {overBalls.map((ball, idx) => {
-                    const isWkt = !!ball.wicketType;
+                    const isWkt   = !!ball.wicketType;
                     const isExtra = ball.ballType !== 'normal';
+                    const isFour  = ball.runsScored === 4;
+                    const isSix   = ball.runsScored === 6;
                     let text = ball.runsScored.toString();
-                    const isFour = ball.runsScored === 4;
-                    const isSix = ball.runsScored === 6;
                     if (isExtra) {
-                      if (ball.ballType === 'wide') text = 'wd';
-                      else if (ball.ballType === 'no_ball') text = 'nb';
+                      if (ball.ballType === 'wide')     text = 'wd';
+                      else if (ball.ballType === 'no_ball')  text = 'nb';
                       else if (ball.ballType === 'leg_bye') text = `${ball.extras}lb`;
-                      else if (ball.ballType === 'bye') text = `${ball.extras}b`;
-                    } else if (isWkt) {
-                      text = 'W';
-                    }
+                      else if (ball.ballType === 'bye')     text = `${ball.extras}b`;
+                    } else if (isWkt) { text = 'W'; }
+
+                    // Batsman / bowler info from included relations
+                    const batsmanName = ball.batsman?.fullName || '';
+                    const bowlerName  = ball.bowler?.fullName || '';
 
                     return (
                       <View key={ball.id || idx} style={styles.ballContainer}>
                         <View style={[styles.ballCircle, isWkt && styles.wktCircle, isExtra && styles.extraCircle, isFour && styles.fourCircle, isSix && styles.sixCircle]}>
                           <Text style={[styles.ballText, isWkt && styles.wktText, isExtra && styles.extraText, isFour && styles.fourText, isSix && styles.sixText]}>{text}</Text>
                         </View>
+                        {batsmanName ? <Text style={styles.ballMeta} numberOfLines={1}>{batsmanName.split(' ').slice(-1)[0]}</Text> : null}
                       </View>
                     );
                   })}
@@ -139,12 +258,16 @@ export default function MatchReportScreen({ route }) {
     );
   };
 
+  // ── Render one innings ──────────────────────────────────────────────────────
   const renderInnings = (inn) => {
     if (!inn) return null;
-    const isSummaryExpanded = expandedSections[`summary_${inn.inningsNumber}`];
+    const inningPerf = perfData?.performances?.find(p => p.inningsNumber === inn.inningsNumber);
+    const isSummaryExp = expandedSections[`batting_${inn.inningsNumber}`];
+    const isBowlExp    = expandedSections[`bowling_${inn.inningsNumber}`];
 
     return (
       <View style={styles.inningsContainer}>
+        {/* Header */}
         <View style={styles.inningsHeader}>
           <View style={styles.inningsHeaderMain}>
             <View style={styles.teamLogoSmallContainer}>
@@ -157,63 +280,41 @@ export default function MatchReportScreen({ route }) {
           </View>
           <View style={styles.inningsScoreBadge}>
             <Text style={styles.inningsScore}>{inn.runs} / {inn.wickets}</Text>
-            <Text style={styles.inningsOvers}>{inn.overs} Ov</Text>
+            <Text style={styles.inningsOvers}>{inn.overs} Ov  ·  RR {inn.runRate?.toFixed(2)}</Text>
           </View>
         </View>
 
-        <View style={styles.summaryCard}>
-          <TouchableOpacity
-            style={styles.summaryHeader}
-            onPress={() => toggleSection(`summary_${inn.inningsNumber}`)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.summaryTitle}>Innings Summary</Text>
-            <Text style={styles.expandIcon}>{isSummaryExpanded ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-
-          {isSummaryExpanded && (
-            <View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Total Runs</Text>
-                <Text style={styles.summaryValue}>{inn.runs}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Wickets Lost</Text>
-                <Text style={styles.summaryValue}>{inn.wickets}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Total Extras</Text>
-                <Text style={styles.summaryValue}>{inn.totalExtras}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Run Rate</Text>
-                <Text style={styles.summaryValue}>{inn.runRate.toFixed(2)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Legal Balls</Text>
-                <Text style={styles.summaryValue}>{inn.legalBalls}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>All Out</Text>
-                <Text style={styles.summaryValue}>{inn.allOut ? 'Yes' : 'No'}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { color: inn.inningsNumber === 1 ? "red" : "#64748B" }]}>
-                  {inn.inningsNumber === 1 ? 'Target' : 'Current Score'}
-                </Text>
-                <Text style={[styles.summaryValue, { color: inn.inningsNumber === 1 ? "red" : "#1E293B" }]}>
-                  {inn.inningsNumber === 1 ? inn.target : inn.runs}
-                </Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Status</Text>
-                <Text style={[styles.summaryValue, { textTransform: 'capitalize', color: inn.status === 'completed' ? '#059669' : '#D97706' }]}>{inn.status}</Text>
-              </View>
-            </View>
-          )}
+        {/* Quick summary pills */}
+        <View style={styles.pillRow}>
+          <View style={styles.pill}><Text style={styles.pillLabel}>Extras</Text><Text style={styles.pillValue}>{inn.totalExtras}</Text></View>
+          <View style={styles.pill}><Text style={styles.pillLabel}>All Out</Text><Text style={styles.pillValue}>{inn.allOut ? 'Yes' : 'No'}</Text></View>
+          {inn.target && <View style={[styles.pill, { backgroundColor: '#FEF2F2' }]}><Text style={[styles.pillLabel, { color: '#EF4444' }]}>Target</Text><Text style={[styles.pillValue, { color: '#EF4444' }]}>{inn.target}</Text></View>}
+          <View style={[styles.pill, { backgroundColor: inn.status === 'completed' ? '#F0FDF4' : '#FFFBEB' }]}>
+            <Text style={[styles.pillLabel, { color: inn.status === 'completed' ? '#059669' : '#D97706' }]}>Status</Text>
+            <Text style={[styles.pillValue, { color: inn.status === 'completed' ? '#059669' : '#D97706', textTransform: 'capitalize' }]}>{inn.status}</Text>
+          </View>
         </View>
 
-        {renderOverTimeline(inn.balls, inn.inningsNumber)}
+        {/* Batting Scorecard */}
+        <TouchableOpacity style={styles.sectionCollapseHeader} onPress={() => toggleSection(`batting_${inn.inningsNumber}`)} activeOpacity={0.7}>
+          <Text style={styles.sectionTitleText}>Batting Scorecard</Text>
+          <Text style={styles.expandIconSmall}>{isSummaryExp ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        {isSummaryExp && (
+          <BattingScorecard scorecard={inningPerf?.battingScorecard} teamName={inn.battingTeam?.name} />
+        )}
+
+        {/* Bowling Scorecard */}
+        <TouchableOpacity style={styles.sectionCollapseHeader} onPress={() => toggleSection(`bowling_${inn.inningsNumber}`)} activeOpacity={0.7}>
+          <Text style={styles.sectionTitleText}>Bowling Figures</Text>
+          <Text style={styles.expandIconSmall}>{isBowlExp ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        {isBowlExp && (
+          <BowlingScorecard scorecard={inningPerf?.bowlingScorecard} teamName={inn.bowlingTeam?.name} />
+        )}
+
+        {/* Overs Timeline */}
+        {inn.balls && inn.balls.length > 0 && renderOverTimeline(inn.balls, inn.inningsNumber)}
       </View>
     );
   };
@@ -221,261 +322,99 @@ export default function MatchReportScreen({ route }) {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Detailed Analytics</Text>
+        <Text style={styles.pageTitle}>Match Report 📊</Text>
         <Text style={styles.pageSubtitle}>Ball-by-ball performance review</Text>
       </View>
       {renderInnings(innings1)}
       {renderInnings(innings2)}
-      <View style={{ height: 40 }} />
+      <View style={{ height: 50 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC'
-  },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  center:    { justifyContent: 'center', alignItems: 'center' },
+
   pageHeader: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#aaffb1ff',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  pageTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1E293B',
-  },
-  pageSubtitle: {
-    fontSize: 14,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  inningsContainer: {
-    padding: 15
-  },
-  inningsHeader: {
+    paddingHorizontal: 22, paddingTop: 20, paddingBottom: 18,
     backgroundColor: '#1E293B',
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
   },
-  inningsHeaderMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  pageTitle:    { fontSize: 24, fontWeight: '900', color: 'white' },
+  pageSubtitle: { fontSize: 13, color: '#94A3B8', marginTop: 3 },
+
+  inningsContainer: { padding: 16 },
+  inningsHeader: {
+    backgroundColor: '#1E293B', padding: 20, borderRadius: 20, marginBottom: 14,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 8,
   },
-  teamLogoSmallContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  inningsHeaderMain:    { flexDirection: 'row', alignItems: 'center' },
+  teamLogoSmallContainer: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  teamLogoSmall:        { width: 32, height: 32, resizeMode: 'contain' },
+  inningsTitle:         { color: 'white', fontSize: 17, fontWeight: 'bold' },
+  inningsSubtitle:      { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
+  inningsScoreBadge:    { alignItems: 'flex-end' },
+  inningsScore:         { color: '#38BDF8', fontSize: 22, fontWeight: '900' },
+  inningsOvers:         { color: 'white', fontSize: 11, opacity: 0.8 },
+
+  pillRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  pill:     { backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center' },
+  pillLabel:{ fontSize: 10, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
+  pillValue:{ fontSize: 14, fontWeight: '900', color: '#1E293B', marginTop: 2 },
+
+  sectionCollapseHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 12, paddingHorizontal: 4, marginBottom: 8,
+    borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
-  teamLogoSmall: {
-    width: 32,
-    height: 32,
-    resizeMode: 'contain',
-  },
-  inningsTitle: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold'
-  },
-  inningsSubtitle: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  inningsScoreBadge: {
-    alignItems: 'flex-end',
-  },
-  inningsScore: {
-    color: '#38BDF8',
-    fontSize: 20,
-    fontWeight: '800'
-  },
-  inningsOvers: {
-    color: 'white',
-    fontSize: 12,
-    opacity: 0.8,
-  },
+
+  // ── Scorecard table ─────────────────────────────────────────────────────
+  scorecardCard:  { backgroundColor: 'white', borderRadius: 18, marginBottom: 18, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6 },
+  scorecardHeader:{ backgroundColor: '#1E3A5F', paddingVertical: 12, paddingHorizontal: 16 },
+  scorecardTeam:  { color: 'white', fontSize: 14, fontWeight: '900', letterSpacing: 0.3 },
+
+  scRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
+  scHeaderRow: { backgroundColor: '#F1F5F9' },
+  scRowAlt:    { backgroundColor: '#FAFAFA' },
+  scCell:      { flex: 1 },
+  scPlayerCell:{ flex: 3, paddingRight: 6 },
+  scCellNum:   { width: 36, textAlign: 'center', fontSize: 13, fontWeight: '700', color: '#334155' },
+  scHeaderText:{ fontSize: 11, fontWeight: '900', color: '#64748B', textTransform: 'uppercase' },
+  scPlayerName:{ fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  scDismissal: { fontSize: 10, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
+  scHighlight: { color: '#EF4444', fontWeight: '900' },
+
+  // ── Overs Timeline ──────────────────────────────────────────────────────
+  sectionWrapper:  { marginBottom: 16 },
+  sectionHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', marginBottom: 10 },
+  sectionTitleText:{ fontSize: 13, fontWeight: '900', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 },
+  expandIconSmall: { fontSize: 14, color: '#94A3B8' },
+
   overCard: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 16,
-    marginBottom: 15,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    borderLeftWidth: 4,
-    borderLeftColor: '#E2E8F0',
+    backgroundColor: 'white', padding: 14, borderRadius: 14, marginBottom: 10,
+    elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 3, borderLeftWidth: 4, borderLeftColor: '#E2E8F0',
   },
-  overHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingBottom: 8,
-  },
-  overTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#64748B',
-    letterSpacing: 1,
-  },
-  overStatsBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  overStatsText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#475569',
-  },
-  expandIconSmall: {
-    fontSize: 14,
-    color: '#64748B',
-  },
-  ballRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap'
-  },
-  ballContainer: {
-    alignItems: 'center',
-    marginHorizontal: 4,
-    marginBottom: 10,
-    width: 40,
-  },
-  ballCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  ballText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#1E293B'
-  },
+  overHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 8 },
+  overTitle:  { fontSize: 11, fontWeight: '900', color: '#64748B', letterSpacing: 1 },
+  overStatsBadge:{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  overStatsText: { fontSize: 11, fontWeight: 'bold', color: '#475569' },
 
-  wktCircle: {
-    backgroundColor: '#EF4444',
-    borderColor: '#EF4444',
-  },
-  wktText: {
-    color: 'white'
-  },
-  extraCircle: {
-    backgroundColor: '#f3d46dff',
-    borderColor: '#f3d46dff',
-  },
-  extraText: {
-    color: '#000000ff'
-  },
-  fourCircle: {
-    backgroundColor: '#c03095ff',
-    borderColor: '#c03095ff',
-  },
-  fourText: {
-    color: 'white'
-  },
-  sixCircle: {
-    backgroundColor: '#66b342ff',
-    borderColor: '#66b342ff',
-  },
-  sixText: {
-    color: 'white'
-  },
-  summaryCard: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 20,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: '#F1F5F9',
-    paddingBottom: 10,
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1E293B',
-  },
-  expandIcon: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1E293B',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8FAFC',
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  summaryValue: {
-    fontSize: 14,
-    color: '#1E293B',
-    fontWeight: 'bold',
-  },
-  sectionWrapper: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 5,
-    marginBottom: 10,
-  },
-  sectionTitleText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
+  ballRow:      { flexDirection: 'row', flexWrap: 'wrap' },
+  ballContainer:{ alignItems: 'center', marginHorizontal: 3, marginBottom: 8, width: 38 },
+  ballCircle:   { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 3, borderWidth: 1, borderColor: '#E2E8F0' },
+  ballText:     { fontSize: 13, fontWeight: '800', color: '#1E293B' },
+  ballMeta:     { fontSize: 8, fontWeight: '600', color: '#94A3B8', textAlign: 'center', maxWidth: 36 },
+
+  wktCircle:  { backgroundColor: '#EF4444', borderColor: '#EF4444' },
+  wktText:    { color: 'white' },
+  extraCircle:{ backgroundColor: '#F3D46D', borderColor: '#F3D46D' },
+  extraText:  { color: '#000' },
+  fourCircle: { backgroundColor: '#C03095', borderColor: '#C03095' },
+  fourText:   { color: 'white' },
+  sixCircle:  { backgroundColor: '#66B342', borderColor: '#66B342' },
+  sixText:    { color: 'white' },
 });
-

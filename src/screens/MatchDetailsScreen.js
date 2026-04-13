@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Alert, Image, Dimensions } from 'react-native';
 import { getMatchScoreboard, recordToss, startInnings, declareInnings, deleteMatch } from '../api/matches';
 import { AuthContext } from '../context/AuthContext';
+import { socket, connectSocket, disconnectSocket, joinMatchRoom, leaveMatchRoom } from '../api/socket';
 
 const { width } = Dimensions.get('window');
 
@@ -16,17 +17,45 @@ export default function MatchDetailsScreen({ route, navigation }) {
 
   useEffect(() => {
     loadScoreboard();
+
+    // Realtime setup
+    connectSocket();
+    joinMatchRoom(matchId);
+
+    const handleUpdate = () => {
+      console.log('Realtime update received for match details');
+      loadScoreboardSilently();
+    };
+
+    socket.on('ball:added', handleUpdate);
+    socket.on('ball:removed', handleUpdate);
+    socket.on('innings:end', handleUpdate);
+
+    return () => {
+      socket.off('ball:added', handleUpdate);
+      socket.off('ball:removed', handleUpdate);
+      socket.off('innings:end', handleUpdate);
+      leaveMatchRoom(matchId);
+    };
   }, [matchId]);
 
   const loadScoreboard = async () => {
     try {
       setLoading(true);
-      const data = await getMatchScoreboard(matchId);
-      setScoreboard(data);
+      await loadScoreboardSilently();
     } catch (e) {
       console.log('Failed to load scoreboard', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadScoreboardSilently = async () => {
+    try {
+      const data = await getMatchScoreboard(matchId);
+      setScoreboard(data);
+    } catch (e) {
+      console.log('Silent load failed', e);
     }
   };
 

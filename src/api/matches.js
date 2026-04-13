@@ -49,3 +49,8 @@ export const deleteMatch = async (matchId) => {
   const response = await apiClient.delete(`/matches/${matchId}`);
   return response.data;
 };
+
+export const getMatchPerformance = async (matchId) => {
+  const response = await apiClient.get(`/matches/${matchId}/performance`);
+  return response.data;
+};

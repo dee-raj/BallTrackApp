@@ -2,7 +2,8 @@ import React, { useState, useContext } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions,
-  ScrollView, TouchableWithoutFeedback, Keyboard
+  ScrollView, TouchableWithoutFeedback, Keyboard,
+  Image
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,9 +53,16 @@ export default function LoginScreen() {
             {/* Header / Logo Section */}
             <View style={styles.headerSection}>
               <View style={styles.logoCircle}>
-                <Text style={styles.logoEmoji}>🏏</Text>
+                <Image
+                  width={60}
+                  height={60}
+                  source={require('../../assets/icon.png')}
+                  style={styles.logoImage}
+                  resizeMode="stretch"
+                />
+                {/* <Text style={styles.logoEmoji}>🏏</Text> */}
               </View>
-              <Text style={styles.appName}>BallTrack</Text>
+              {/* <Text style={styles.appName}>BallTrack</Text> */}
               <Text style={styles.tagline}>“Every Ball Matters.”</Text>
             </View>
 
@@ -103,8 +111,8 @@ export default function LoginScreen() {
                     secureTextEntry={isShowingPass}
                     placeholderTextColor="#94A3B8"
                   />
-                  <TouchableOpacity 
-                    style={styles.eyeToggle} 
+                  <TouchableOpacity
+                    style={styles.eyeToggle}
                     onPress={() => setIsShowingPass(!isShowingPass)}
                   >
                     <Text style={styles.eyeText}>{isShowingPass ? 'SHOW' : 'HIDE'}</Text>
@@ -151,8 +159,8 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logoCircle: {
-    width: 80,
-    height: 80,
+    height: 90,
+    aspectRatio: 1,
     borderRadius: 40,
     backgroundColor: 'white',
     justifyContent: 'center',
@@ -163,8 +171,10 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     marginBottom: 15,
   },
-  logoEmoji: {
-    fontSize: 40,
+  logoImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 10,
   },
   appName: {
     fontSize: 32,

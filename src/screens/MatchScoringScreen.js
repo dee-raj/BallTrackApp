@@ -1,51 +1,102 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator,
   Alert, Modal, FlatList, Image,
   Dimensions, LayoutAnimation
 } from 'react-native';
-import { getMatchScoreboard, recordBall, undoBall, declareInnings } from '../api/matches';
+import { getMatchScoreboard, recordBall, undoBall, declareInnings, getMatchPerformance } from '../api/matches';
 import { getTeamPlayers } from '../api/players';
+import { socket, connectSocket, disconnectSocket, joinMatchRoom, leaveMatchRoom } from '../api/socket';
 
 const { width } = Dimensions.get('window');
 
+const WICKET_TYPES = [
+  { key: 'bowled',           label: 'Bowled',            emoji: '🏏' },
+  { key: 'caught',           label: 'Caught',            emoji: '🤲' },
+  { key: 'lbw',              label: 'LBW',               emoji: '🦵' },
+  { key: 'run_out',          label: 'Run Out',           emoji: '🏃' },
+  { key: 'stumped',          label: 'Stumped',           emoji: '🧤' },
+  { key: 'hit_wicket',       label: 'Hit Wicket',        emoji: '💥' },
+  { key: 'handled_ball',     label: 'Handled Ball',      emoji: '✋' },
+  { key: 'obstructing_field',label: 'Obstructing Field', emoji: '🚫' },
+  { key: 'timed_out',        label: 'Timed Out',         emoji: '⏱️' },
+];
+
+const FIELDER_NEEDED = ['caught', 'run_out', 'stumped'];
+
 export default function MatchScoringScreen({ route, navigation }) {
   const { matchId } = route.params;
-  const [scoreboard, setScoreboard] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [scoreboard, setScoreboard]   = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [submitting, setSubmitting]   = useState(false);
 
   // Player selection state
-  const [batsmanId, setBatsmanId] = useState(null);
+  const [batsmanId, setBatsmanId]     = useState(null);
   const [nonStrikerId, setNonStrikerId] = useState(null);
-  const [bowlerId, setBowlerId] = useState(null);
+  const [bowlerId, setBowlerId]       = useState(null);
 
   const [battingTeamPlayers, setBattingTeamPlayers] = useState([]);
   const [bowlingTeamPlayers, setBowlingTeamPlayers] = useState([]);
 
-  // Modal state
-  const [showPlayerModal, setShowPlayerModal] = useState(false);
-  const [selectionType, setSelectionType] = useState(null); // 'batsman' | 'nonStriker' | 'bowler'
+  // Dismissed batsmen (player IDs that are out this innings)
+  const [dismissedPlayerIds, setDismissedPlayerIds] = useState([]);
 
-  useEffect(() => {
-    loadData();
+  // Live performance stats
+  const [perfData, setPerfData] = useState(null); // raw from API
+
+  // Player selector modal
+  const [showPlayerModal, setShowPlayerModal] = useState(false);
+  const [selectionType, setSelectionType]     = useState(null); // 'batsman'|'nonStriker'|'bowler'
+
+  // Wicket modal state
+  const [showWicketModal, setShowWicketModal]     = useState(false);
+  const [selectedWicketType, setSelectedWicketType] = useState(null);
+  const [selectedFielderId, setSelectedFielderId]   = useState(null);
+  const [showFielderPicker, setShowFielderPicker]   = useState(false);
+
+  useEffect(() => { 
+    loadData(); 
+    
+    // Realtime setup
+    connectSocket();
+    joinMatchRoom(matchId);
+
+    const handleBallAdded = (data) => {
+      console.log('Realtime Ball Added:', data);
+      // Update scoreboard visually
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
+      setScoreboard(data.match ? { ...data.match, innings: [data.innings] } : null); 
+      // Full refresh to ensure consistency with performances
+      loadDataSilently();
+    };
+
+    const handleBallRemoved = (data) => {
+      console.log('Realtime Ball Removed:', data);
+      loadDataSilently();
+    };
+
+    const handleInningsEnd = (data) => {
+      console.log('Realtime Innings End:', data);
+      loadDataSilently();
+    };
+
+    socket.on('ball:added', handleBallAdded);
+    socket.on('ball:removed', handleBallRemoved);
+    socket.on('innings:end', handleInningsEnd);
+
+    return () => {
+      socket.off('ball:added', handleBallAdded);
+      socket.off('ball:removed', handleBallRemoved);
+      socket.off('innings:end', handleInningsEnd);
+      leaveMatchRoom(matchId);
+    };
   }, [matchId]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const data = await getMatchScoreboard(matchId);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setScoreboard(data);
-
-      const currentInnings = data?.innings?.find(i => i.status === 'in_progress') || data?.innings?.[data.innings.length - 1];
-      if (currentInnings) {
-        const battingPlayers = await getTeamPlayers(currentInnings.battingTeamId);
-        const bowlingPlayers = await getTeamPlayers(currentInnings.bowlingTeamId);
-        setBattingTeamPlayers(battingPlayers);
-        setBowlingTeamPlayers(bowlingPlayers);
-      }
+      await loadDataSilently();
     } catch (e) {
       console.log('Failed to load scoreboard', e);
       Alert.alert('Error', 'Could not load match data');
@@ -54,39 +105,97 @@ export default function MatchScoringScreen({ route, navigation }) {
     }
   };
 
-  const postBallLogic = async (runsScored = 0, isWicket = false) => {
-    const data = await getMatchScoreboard(matchId);
+  const loadDataSilently = async () => {
+    try {
+      const data = await getMatchScoreboard(matchId);
+      setScoreboard(data);
+
+      const currentInnings = data?.innings?.find(i => i.status === 'in_progress')
+        || data?.innings?.[data.innings.length - 1];
+      if (currentInnings) {
+        const battingPlayers = await getTeamPlayers(currentInnings.battingTeamId);
+        const bowlingPlayers = await getTeamPlayers(currentInnings.bowlingTeamId);
+        setBattingTeamPlayers(battingPlayers);
+        setBowlingTeamPlayers(bowlingPlayers);
+      }
+      await refreshPerformance(data);
+    } catch (e) {
+      console.log('Silent load failed', e);
+    }
+  };
+
+  const refreshPerformance = async (sbData) => {
+    try {
+      const perf = await getMatchPerformance(matchId);
+      setPerfData(perf);
+      // Identify the active innings
+      const sb = sbData || scoreboard;
+      const activeInnings = sb?.innings?.find(i => i.status === 'in_progress')
+        || sb?.innings?.[sb.innings.length - 1];
+      if (!activeInnings) return;
+      const inningPerf = perf.performances?.find(p => p.inningsNumber === activeInnings.inningsNumber);
+      if (inningPerf) {
+        setDismissedPlayerIds(inningPerf.dismissedPlayerIds || []);
+      }
+    } catch (_) {
+      // Non-fatal: perf data may not exist yet
+    }
+  };
+
+  const getCurrentInningPerf = () => {
+    if (!perfData || !scoreboard) return null;
+    const activeInnings = scoreboard.innings?.find(i => i.status === 'in_progress')
+      || scoreboard.innings?.[scoreboard.innings.length - 1];
+    return perfData.performances?.find(p => p.inningsNumber === activeInnings?.inningsNumber);
+  };
+
+  const getBatsmanStats = (playerId) => {
+    const inningPerf = getCurrentInningPerf();
+    return inningPerf?.battingScorecard?.find(b => b.playerId === playerId) || null;
+  };
+
+  const getBowlerStats = (playerId) => {
+    const inningPerf = getCurrentInningPerf();
+    return inningPerf?.bowlingScorecard?.find(b => b.playerId === playerId) || null;
+  };
+
+  const postBallLogic = async (runsScored = 0, isWicket = false, sbData = null) => {
+    const data = sbData || await getMatchScoreboard(matchId);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
     setScoreboard(data);
 
-    const newInnings = data?.innings?.find(i => i.status === 'in_progress') || data?.innings?.[data.innings.length - 1];
+    const newInnings = data?.innings?.find(i => i.status === 'in_progress')
+      || data?.innings?.[data.innings.length - 1];
 
     if (newInnings) {
       if (newInnings.status === 'completed') {
-        Alert.alert('Innings Completed!', 'The target has been reached or the overs are finished.', [
+        await refreshPerformance(data);
+        Alert.alert('Innings Completed!', 'The innings has ended.', [
           { text: 'View Report', onPress: () => navigation.navigate('MatchReport', { matchId }) },
           { text: 'OK' }
         ]);
         return;
       }
 
-      let currentStriker = batsmanId;
+      let currentStriker    = batsmanId;
       let currentNonStriker = nonStrikerId;
 
       if (runsScored % 2 !== 0) {
-        currentStriker = nonStrikerId;
+        currentStriker    = nonStrikerId;
         currentNonStriker = batsmanId;
       }
 
       const isOverComplete = newInnings.legalBalls > 0 && newInnings.legalBalls % 6 === 0;
       if (isOverComplete) {
-        const temp = currentStriker;
-        currentStriker = currentNonStriker;
+        const temp        = currentStriker;
+        currentStriker    = currentNonStriker;
         currentNonStriker = temp;
       }
 
       setBatsmanId(currentStriker);
       setNonStrikerId(currentNonStriker);
+
+      await refreshPerformance(data);
 
       if (isWicket) {
         setBatsmanId(null);
@@ -98,38 +207,30 @@ export default function MatchScoringScreen({ route, navigation }) {
     }
   };
 
-  const currentInnings = scoreboard?.innings?.find(i => i.status === 'in_progress') || scoreboard?.innings?.[scoreboard?.innings?.length - 1];
+  const currentInnings = scoreboard?.innings?.find(i => i.status === 'in_progress')
+    || scoreboard?.innings?.[scoreboard?.innings?.length - 1];
 
+  // ─── Run handler ──────────────────────────────────────────────────────────
   const handleRecordRuns = async (runs) => {
-    if (!currentInnings) {
-      Alert.alert('Error', 'No active innings');
-      return;
-    }
+    if (!currentInnings) { Alert.alert('Error', 'No active innings'); return; }
     if (!batsmanId || !nonStrikerId || !bowlerId) {
       Alert.alert('Missing Players', 'Please select Striker, Non-Striker, and Bowler first!');
       return;
     }
-
     try {
       setSubmitting(true);
       await recordBall({
-        matchId: matchId,
-        inningsId: currentInnings.id,
-        batsmanPlayerId: batsmanId,
-        nonStrikerPlayerId: nonStrikerId,
-        bowlerPlayerId: bowlerId,
-        runsOffBat: runs,
-        extraType: 'normal',
-        extraRuns: 0
+        matchId, inningsId: currentInnings.id,
+        batsmanPlayerId: batsmanId, nonStrikerPlayerId: nonStrikerId, bowlerPlayerId: bowlerId,
+        runsOffBat: runs, extraType: 'normal', extraRuns: 0,
       });
       await postBallLogic(runs, false);
     } catch (e) {
       Alert.alert('Error recording ball', e.response?.data?.message || e.message);
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
+  // ─── Extra handler ────────────────────────────────────────────────────────
   const handleRecordExtra = async (extraType) => {
     if (!currentInnings) return;
     if (!batsmanId || !nonStrikerId || !bowlerId) {
@@ -138,51 +239,57 @@ export default function MatchScoringScreen({ route, navigation }) {
     }
     try {
       setSubmitting(true);
+      const extraRuns = extraType === 'wide' || extraType === 'no_ball' ? 0 : 1;
       await recordBall({
-        matchId: matchId,
-        inningsId: currentInnings.id,
-        batsmanPlayerId: batsmanId,
-        nonStrikerPlayerId: nonStrikerId,
-        bowlerPlayerId: bowlerId,
-        runsOffBat: 0,
-        extraType: extraType,
-        extraRuns: extraType === 'wide' || extraType === 'no_ball' ? 0 : 1
+        matchId, inningsId: currentInnings.id,
+        batsmanPlayerId: batsmanId, nonStrikerPlayerId: nonStrikerId, bowlerPlayerId: bowlerId,
+        runsOffBat: 0, extraType, extraRuns,
       });
       await postBallLogic(extraType === 'wide' || extraType === 'no_ball' ? 0 : 1, false);
     } catch (e) {
       Alert.alert('Error recording extra', e.response?.data?.message || e.message);
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
-  const handleRecordWicket = async () => {
+  // ─── Wicket flow ─────────────────────────────────────────────────────────
+  const handleWicketPress = () => {
     if (!currentInnings) return;
     if (!batsmanId || !nonStrikerId || !bowlerId) {
       Alert.alert('Missing Players', 'Please select Striker, Non-Striker, and Bowler first!');
       return;
     }
+    setSelectedWicketType(null);
+    setSelectedFielderId(null);
+    setShowWicketModal(true);
+  };
+
+  const handleConfirmWicket = async () => {
+    if (!selectedWicketType) {
+      Alert.alert('Select Wicket Type', 'Please choose how the batsman was dismissed.');
+      return;
+    }
+    if (FIELDER_NEEDED.includes(selectedWicketType) && !selectedFielderId) {
+      Alert.alert('Select Fielder', 'Please choose the fielder involved.');
+      return;
+    }
+    setShowWicketModal(false);
     try {
       setSubmitting(true);
       await recordBall({
-        matchId: matchId,
-        inningsId: currentInnings.id,
-        batsmanPlayerId: batsmanId,
-        nonStrikerPlayerId: nonStrikerId,
-        bowlerPlayerId: bowlerId,
-        runsOffBat: 0,
-        extraType: 'normal',
+        matchId, inningsId: currentInnings.id,
+        batsmanPlayerId: batsmanId, nonStrikerPlayerId: nonStrikerId, bowlerPlayerId: bowlerId,
+        runsOffBat: 0, extraType: 'normal', extraRuns: 0,
         isWicket: true,
-        wicketType: 'bowled'
+        wicketType: selectedWicketType,
+        fielderPlayerId: selectedFielderId || undefined,
       });
       await postBallLogic(0, true);
     } catch (e) {
       Alert.alert('Error recording wicket', e.response?.data?.message || e.message);
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
+  // ─── Undo ─────────────────────────────────────────────────────────────────
   const handleUndoBall = async () => {
     if (!currentInnings) return;
     try {
@@ -191,11 +298,10 @@ export default function MatchScoringScreen({ route, navigation }) {
       await loadData();
     } catch (e) {
       Alert.alert('Undo Failed', e.response?.data?.message || e.message);
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
+  // ─── Declare ─────────────────────────────────────────────────────────────
   const handleDeclare = () => {
     if (!currentInnings) return;
     Alert.alert('Declare Innings', 'Are you sure you want to end this innings manually?', [
@@ -206,14 +312,13 @@ export default function MatchScoringScreen({ route, navigation }) {
           try {
             await declareInnings(currentInnings.id);
             loadData();
-          } catch (e) {
-            Alert.alert('Error', 'Failed to declare innings');
-          }
+          } catch (e) { Alert.alert('Error', 'Failed to declare innings'); }
         }
       }
     ]);
   };
 
+  // ─── Player selection modal ───────────────────────────────────────────────
   const openPlayerSelection = (type) => {
     setSelectionType(type);
     setShowPlayerModal(true);
@@ -221,11 +326,21 @@ export default function MatchScoringScreen({ route, navigation }) {
 
   const handleSelectPlayer = (playerId) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    if (selectionType === 'batsman') setBatsmanId(playerId);
+    if (selectionType === 'batsman')    setBatsmanId(playerId);
     else if (selectionType === 'nonStriker') setNonStrikerId(playerId);
-    else if (selectionType === 'bowler') setBowlerId(playerId);
+    else if (selectionType === 'bowler')    setBowlerId(playerId);
     setShowPlayerModal(false);
   };
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+  const getPlayerName = (id, teamPlayers) => {
+    if (!id) return 'Select Player';
+    const rec = teamPlayers.find(p => p.playerId === id);
+    return rec ? rec.player.fullName : 'Unknown';
+  };
+
+  const isPlayerOnField = (id) => id === batsmanId || id === nonStrikerId || id === bowlerId;
+  const isPlayerDismissed = (id) => dismissedPlayerIds.includes(id);
 
   if (loading) {
     return (
@@ -235,15 +350,56 @@ export default function MatchScoringScreen({ route, navigation }) {
     );
   }
 
-  const getPlayerName = (id, teamPlayers) => {
-    if (!id) return 'Select Player';
-    const playerRecord = teamPlayers.find(p => p.playerId === id);
-    return playerRecord ? playerRecord.player.fullName : 'Unknown';
+  // ─── Current over balls display ───────────────────────────────────────────
+  const renderCurrentOverBalls = () => {
+    const balls = currentInnings?.balls || [];
+    const sorted = [...balls].sort((a, b) => a.sequenceNo - b.sequenceNo);
+    const latestOver = sorted.length > 0 ? sorted[sorted.length - 1].overNumber : 1;
+    const overBalls = sorted.filter(b => b.overNumber === latestOver);
+
+    if (overBalls.length === 0) {
+      return <Text style={styles.noBallsText}>Start of over {latestOver}</Text>;
+    }
+    return overBalls.map((ball, idx) => {
+      let display  = ball.runsScored.toString();
+      let dotColor = '#94A3B8';
+      let textColor = '#fff';
+      if (ball.wicketType)            { display = 'W'; dotColor = '#EF4444'; }
+      else if (ball.ballType === 'wide')    { display = `${ball.extras}wd`; dotColor = '#F59E0B'; }
+      else if (ball.ballType === 'no_ball') { display = `${ball.runsScored}nb`; dotColor = '#F59E0B'; }
+      else if (ball.runsScored === 4)  { dotColor = '#3B82F6'; }
+      else if (ball.runsScored === 6)  { dotColor = '#8B5CF6'; }
+      else if (ball.runsScored === 0)  { display = '•'; textColor = '#94A3B8'; dotColor = 'transparent'; }
+      return (
+        <View key={ball.id || idx} style={[
+          styles.ballDot,
+          { backgroundColor: dotColor, borderColor: ball.runsScored === 0 ? '#E2E8F0' : dotColor, borderWidth: ball.runsScored === 0 ? 1 : 0 }
+        ]}>
+          <Text style={[styles.ballText, { color: textColor }]}>{display}</Text>
+        </View>
+      );
+    });
   };
 
+  const currentOverRuns = (() => {
+    const balls = currentInnings?.balls || [];
+    const latestOver = balls.length > 0 ? Math.max(...balls.map(b => b.overNumber)) : 1;
+    return balls.filter(b => b.overNumber === latestOver).reduce((s, b) => s + b.runsScored + b.extras, 0);
+  })();
+
+  // ─── Batting player list filter ───────────────────────────────────────────
+  const getFilteredBattingPlayers = () => {
+    return battingTeamPlayers.filter(p => !isPlayerDismissed(p.playerId));
+  };
+
+  const bowlerStats = getBowlerStats(bowlerId);
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+
+        {/* ── Score Banner ── */}
         {currentInnings ? (
           <View style={styles.scoreBanner}>
             <View style={styles.scoreHeader}>
@@ -273,69 +429,21 @@ export default function MatchScoringScreen({ route, navigation }) {
               </View>
             </View>
 
-            {/* Current Over ball-by-ball */}
+            {/* Current Over */}
             <View style={styles.currentOverContainer}>
               <View style={styles.recentBallsList}>
-                {(() => {
-                  const balls = currentInnings.balls || [];
-                  // Sort by sequence to be safe, though backend handles it
-                  const sortedBalls = [...balls].sort((a, b) => a.sequenceNo - b.sequenceNo);
-                  // Find balls of the most recent over
-                  const latestOver = sortedBalls.length > 0 ? sortedBalls[sortedBalls.length - 1].overNumber : 1;
-                  const currentOverBalls = sortedBalls.filter(b => b.overNumber === latestOver);
-
-                  if (currentOverBalls.length === 0) {
-                    return <Text style={styles.noBallsText}>Start of over {latestOver}</Text>;
-                  }
-
-                  return currentOverBalls.map((ball, idx) => {
-                    let display = ball.runsScored.toString();
-                    let dotColor = '#94A3B8'; // default grey
-                    let textColor = '#fff';
-
-                    if (ball.wicketType) {
-                      display = 'W';
-                      dotColor = '#EF4444'; // red
-                    } else if (ball.ballType === 'wide') {
-                      display = `${ball.extras}wd`;
-                      dotColor = '#F59E0B'; // amber
-                    } else if (ball.ballType === 'no_ball') {
-                      display = `${ball.runsScored}nb`;
-                      dotColor = '#F59E0B';
-                    } else if (ball.runsScored === 4) {
-                      dotColor = '#3B82F6'; // blue
-                    } else if (ball.runsScored === 6) {
-                      dotColor = '#8B5CF6'; // purple
-                    } else if (ball.runsScored === 0) {
-                      display = '•';
-                      textColor = '#94A3B8';
-                      dotColor = 'transparent';
-                    }
-
-                    return (
-                      <View key={ball.id || idx} style={[styles.ballDot, { backgroundColor: dotColor, borderColor: ball.runsScored === 0 ? '#E2E8F0' : dotColor, borderWidth: ball.runsScored === 0 ? 1 : 0 }]}>
-                        <Text style={[styles.ballText, { color: textColor }]}>{display}</Text>
-                      </View>
-                    );
-                  });
-                })()}
+                {renderCurrentOverBalls()}
               </View>
               <View style={styles.overTotalBadge}>
-                <Text style={styles.overTotalText}>
-                  {(() => {
-                    const balls = currentInnings.balls || [];
-                    const latestOver = balls.length > 0 ? Math.max(...balls.map(b => b.overNumber)) : 1;
-                    const runs = balls.filter(b => b.overNumber === latestOver).reduce((sum, b) => sum + b.runsScored + b.extras, 0);
-                    return runs;
-                  })()} runs
-                </Text>
+                <Text style={styles.overTotalText}>{currentOverRuns} runs</Text>
               </View>
             </View>
 
-            {currentInnings.status !== 'completed' && scoreboard?.matchStatus !== 'finished' && (
+            {currentInnings.status !== 'completed' && (
               <View style={styles.targetSection}>
                 <Text style={styles.targetText}>
                   RR: {(currentInnings.totalRuns / (Math.max(1, currentInnings.legalBalls) / 6)).toFixed(2)}
+                  {currentInnings.targetRuns ? `  •  Need ${currentInnings.targetRuns - currentInnings.totalRuns} from ${(scoreboard.overs * 6 - currentInnings.legalBalls)} balls` : ''}
                 </Text>
                 <TouchableOpacity onPress={() => navigation.navigate('MatchReport', { matchId })}>
                   <Text style={styles.reportLink}>Full Stats 📈</Text>
@@ -349,59 +457,93 @@ export default function MatchScoringScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* ── Field Operations ── */}
         {currentInnings && currentInnings.status !== 'completed' && (
           <View style={styles.activePlayersSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Field Operations</Text>
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity onPress={handleUndoBall} style={styles.utilityBtn}>
+                <TouchableOpacity onPress={handleUndoBall} style={styles.utilityBtn} disabled={submitting}>
                   <Text style={styles.utilityBtnText}>↩ UNDO</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleDeclare} style={[styles.utilityBtn, { borderColor: '#EF4444' }]}>
+                <TouchableOpacity onPress={handleDeclare} style={[styles.utilityBtn, { borderColor: '#EF4444' }]} disabled={submitting}>
                   <Text style={[styles.utilityBtnText, { color: '#EF4444' }]}>DECLARE</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
+            {/* Batsman cards */}
             <View style={styles.playerCardsRow}>
+              {/* Striker */}
               <TouchableOpacity
                 style={[styles.playerCard, batsmanId && styles.playerCardActive]}
                 onPress={() => openPlayerSelection('batsman')}
               >
-                <Text style={styles.playerRoleLabel}>STRIKER</Text>
+                <Text style={styles.playerRoleLabel}>STRIKER 🏏</Text>
                 <Text style={styles.playerCardName} numberOfLines={1}>
                   {getPlayerName(batsmanId, battingTeamPlayers)}
                 </Text>
+                {batsmanId && (() => {
+                  const st = getBatsmanStats(batsmanId);
+                  return st ? (
+                    <View style={styles.liveStatRow}>
+                      <Text style={styles.liveStatMain}>{st.runs}</Text>
+                      <Text style={styles.liveStatSub}>({st.balls}b)</Text>
+                      {st.fours > 0 && <Text style={styles.liveStatBadge}>4×{st.fours}</Text>}
+                      {st.sixes > 0 && <Text style={[styles.liveStatBadge, { backgroundColor: '#EDE9FE', color: '#7C3AED' }]}>6×{st.sixes}</Text>}
+                    </View>
+                  ) : null;
+                })()}
                 <View style={styles.cardFooter}>
-                  <Text style={styles.editEmoji}>🏏</Text>
-                  <Text style={styles.tapToChange}>Tap to select</Text>
+                  <Text style={styles.tapToChange}>Tap to change</Text>
                 </View>
               </TouchableOpacity>
 
+              {/* Non-Striker */}
               <TouchableOpacity
                 style={[styles.playerCard, nonStrikerId && styles.playerCardActive]}
                 onPress={() => openPlayerSelection('nonStriker')}
               >
-                <Text style={styles.playerRoleLabel}>NON-STRIKER</Text>
+                <Text style={styles.playerRoleLabel}>NON-STRIKER 👤</Text>
                 <Text style={styles.playerCardName} numberOfLines={1}>
                   {getPlayerName(nonStrikerId, battingTeamPlayers)}
                 </Text>
+                {nonStrikerId && (() => {
+                  const st = getBatsmanStats(nonStrikerId);
+                  return st ? (
+                    <View style={styles.liveStatRow}>
+                      <Text style={styles.liveStatMain}>{st.runs}</Text>
+                      <Text style={styles.liveStatSub}>({st.balls}b)</Text>
+                    </View>
+                  ) : null;
+                })()}
                 <View style={styles.cardFooter}>
-                  <Text style={styles.editEmoji}>👤</Text>
-                  <Text style={styles.tapToChange}>Tap to select</Text>
+                  <Text style={styles.tapToChange}>Tap to change</Text>
                 </View>
               </TouchableOpacity>
             </View>
 
+            {/* Bowler card */}
             <TouchableOpacity
               style={[styles.bowlerCard, bowlerId && styles.bowlerCardActive]}
               onPress={() => openPlayerSelection('bowler')}
             >
               <View style={styles.bowlerInfo}>
-                <Text style={styles.playerRoleLabel}>CURRENT BOWLER</Text>
+                <Text style={styles.playerRoleLabel}>CURRENT BOWLER 🎾</Text>
                 <Text style={styles.bowlerName} numberOfLines={1}>
                   {getPlayerName(bowlerId, bowlingTeamPlayers)}
                 </Text>
+                {bowlerStats && (
+                  <View style={styles.bowlerStatsRow}>
+                    <Text style={styles.bowlerStat}>{bowlerStats.oversDisplay} ov</Text>
+                    <Text style={styles.bowlerStatDivider}>·</Text>
+                    <Text style={styles.bowlerStat}>{bowlerStats.wickets}W</Text>
+                    <Text style={styles.bowlerStatDivider}>·</Text>
+                    <Text style={styles.bowlerStat}>{bowlerStats.runsConceded}R</Text>
+                    <Text style={styles.bowlerStatDivider}>·</Text>
+                    <Text style={styles.bowlerStat}>Econ {bowlerStats.economy}</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.bowlerIconContainer}>
                 <Text style={styles.bowlerEmoji}>🎾</Text>
@@ -410,6 +552,7 @@ export default function MatchScoringScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* ── Scoring Pad ── */}
         <View style={styles.scoringPad}>
           <View style={styles.padRow}>
             {[0, 1, 2, 3].map(runs => (
@@ -448,7 +591,7 @@ export default function MatchScoringScreen({ route, navigation }) {
             <TouchableOpacity style={[styles.numpadBtn, styles.extraBtn]} onPress={() => handleRecordExtra('bye')} disabled={submitting || currentInnings?.status === 'completed'}>
               <Text style={styles.extraText}>BYE</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.numpadBtn, styles.wicketBtn]} onPress={handleRecordWicket} disabled={submitting || currentInnings?.status === 'completed'}>
+            <TouchableOpacity style={[styles.numpadBtn, styles.wicketBtn]} onPress={handleWicketPress} disabled={submitting || currentInnings?.status === 'completed'}>
               <Text style={styles.wicketBtnText}>WICKET</Text>
               <Text style={styles.wicketSubText}>FALL OUT</Text>
             </TouchableOpacity>
@@ -466,46 +609,143 @@ export default function MatchScoringScreen({ route, navigation }) {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      <Modal visible={showPlayerModal} animationType="slide" transparent={true}>
+      {/* ══════════ PLAYER SELECTOR MODAL ══════════ */}
+      <Modal visible={showPlayerModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select {selectionType === 'bowler' ? 'Bowler' : 'Batsman'}</Text>
+              <Text style={styles.modalTitle}>
+                Select {selectionType === 'bowler' ? 'Bowler' : selectionType === 'batsman' ? 'Striker' : 'Non-Striker'}
+              </Text>
               <TouchableOpacity onPress={() => setShowPlayerModal(false)} style={styles.closeBtn}>
                 <Text style={styles.closeModalText}>✕</Text>
               </TouchableOpacity>
             </View>
 
+            {selectionType !== 'bowler' && dismissedPlayerIds.length > 0 && (
+              <View style={styles.dismissedBanner}>
+                <Text style={styles.dismissedBannerText}>
+                  🚫 {dismissedPlayerIds.length} player{dismissedPlayerIds.length > 1 ? 's' : ''} already dismissed
+                </Text>
+              </View>
+            )}
+
             <FlatList
-              data={selectionType === 'bowler' ? bowlingTeamPlayers : battingTeamPlayers}
+              data={selectionType === 'bowler' ? bowlingTeamPlayers : getFilteredBattingPlayers()}
               keyExtractor={(item) => item.playerId}
               showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.playerListItem,
-                    (batsmanId === item.playerId || nonStrikerId === item.playerId || bowlerId === item.playerId) && styles.playerListItemDisabled
-                  ]}
-                  onPress={() => handleSelectPlayer(item.playerId)}
-                  disabled={batsmanId === item.playerId || nonStrikerId === item.playerId || bowlerId === item.playerId}
-                >
-                  <View style={styles.playerListItemInfo}>
-                    <View style={styles.jerseyCircle}>
-                      <Text style={styles.playerListNumber}>{item.jerseyNumber || '?'}</Text>
+              ListEmptyComponent={
+                <View style={styles.emptyList}>
+                  <Text style={styles.emptyListText}>No available players</Text>
+                </View>
+              }
+              renderItem={({ item }) => {
+                const onField = isPlayerOnField(item.playerId);
+                const st = selectionType !== 'bowler' ? getBatsmanStats(item.playerId) : getBowlerStats(item.playerId);
+                return (
+                  <TouchableOpacity
+                    style={[styles.playerListItem, onField && styles.playerListItemDisabled]}
+                    onPress={() => handleSelectPlayer(item.playerId)}
+                    disabled={onField}
+                  >
+                    <View style={styles.playerListItemInfo}>
+                      <View style={styles.jerseyCircle}>
+                        <Text style={styles.playerListNumber}>{item.jerseyNumber || '?'}</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.playerListName}>{item.player.fullName}</Text>
+                        <Text style={styles.playerListRole}>{item.isCaptain ? 'Captain' : 'Player'}</Text>
+                        {st && selectionType !== 'bowler' && (
+                          <Text style={styles.playerListStat}>{st.runs} runs ({st.balls}b) · SR {st.strikeRate}</Text>
+                        )}
+                        {st && selectionType === 'bowler' && (
+                          <Text style={styles.playerListStat}>{st.oversDisplay} ov · {st.wickets}W · {st.runsConceded}R · Econ {st.economy}</Text>
+                        )}
+                      </View>
                     </View>
-                    <View>
-                      <Text style={styles.playerListName}>{item.player.fullName}</Text>
-                      <Text style={styles.playerListRole}>{item.isCaptain ? 'Captain' : 'Player'}</Text>
-                    </View>
-                  </View>
-                  {(batsmanId === item.playerId || nonStrikerId === item.playerId || bowlerId === item.playerId) && (
-                    <View style={styles.onFieldBadge}>
-                      <Text style={styles.onFieldText}>ON FIELD</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              )}
+                    {onField && (
+                      <View style={styles.onFieldBadge}>
+                        <Text style={styles.onFieldText}>ON FIELD</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* ══════════ WICKET MODAL ══════════ */}
+      <Modal visible={showWicketModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🏏 Wicket Type</Text>
+              <TouchableOpacity onPress={() => setShowWicketModal(false)} style={styles.closeBtn}>
+                <Text style={styles.closeModalText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.wicketSubLabel}>
+              Batsman: <Text style={{ color: '#1E293B', fontWeight: '900' }}>{getPlayerName(batsmanId, battingTeamPlayers)}</Text>
+            </Text>
+
+            {/* Wicket type grid */}
+            <View style={styles.wicketGrid}>
+              {WICKET_TYPES.map(wt => (
+                <TouchableOpacity
+                  key={wt.key}
+                  style={[styles.wicketTypeBtn, selectedWicketType === wt.key && styles.wicketTypeBtnActive]}
+                  onPress={() => {
+                    setSelectedWicketType(wt.key);
+                    setSelectedFielderId(null); // reset fielder if type changed
+                  }}
+                >
+                  <Text style={styles.wicketTypeEmoji}>{wt.emoji}</Text>
+                  <Text style={[styles.wicketTypeLabel, selectedWicketType === wt.key && styles.wicketTypeLabelActive]}>
+                    {wt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Fielder selector — only for caught/run_out/stumped */}
+            {selectedWicketType && FIELDER_NEEDED.includes(selectedWicketType) && (
+              <View style={styles.fielderSection}>
+                <Text style={styles.fielderSectionTitle}>
+                  {selectedWicketType === 'caught' ? 'Caught by' : selectedWicketType === 'stumped' ? 'Stumped by' : 'Run out by'} (fielder)
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {bowlingTeamPlayers.map(p => (
+                      <TouchableOpacity
+                        key={p.playerId}
+                        style={[styles.fielderChip, selectedFielderId === p.playerId && styles.fielderChipActive]}
+                        onPress={() => setSelectedFielderId(p.playerId)}
+                      >
+                        <Text style={[styles.fielderChipText, selectedFielderId === p.playerId && styles.fielderChipTextActive]}>
+                          {p.player.fullName.split(' ')[0]}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+                {selectedFielderId && (
+                  <Text style={styles.fielderSelected}>
+                    ✅ {getPlayerName(selectedFielderId, bowlingTeamPlayers)}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.confirmWicketBtn, !selectedWicketType && styles.confirmWicketBtnDisabled]}
+              onPress={handleConfirmWicket}
+              disabled={!selectedWicketType}
+            >
+              <Text style={styles.confirmWicketText}>Confirm Wicket</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -514,431 +754,142 @@ export default function MatchScoringScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC'
-  },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
+  container:   { flex: 1, backgroundColor: '#F8FAFC' },
+  center:      { justifyContent: 'center', alignItems: 'center' },
+
+  // ── Score Banner ──────────────────────────────────────────────────────────
   scoreBanner: {
     backgroundColor: '#1E293B',
     padding: 25,
     borderBottomLeftRadius: 35,
     borderBottomRightRadius: 35,
     elevation: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-  },
-  scoreHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  battingLogoSmallContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  battingLogoSmall: {
-    width: 24,
-    height: 24,
-    resizeMode: 'contain',
-  },
-  battingTeamName: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '800',
-    flex: 1,
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  liveText: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  scoreMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  scoreMainText: {
-    color: 'white',
-    fontSize: 56,
-    fontWeight: '900',
-  },
-  overBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-  },
-  overBadgeText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  targetSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    paddingTop: 15,
-    marginTop: 5,
-  },
-  targetText: {
-    color: '#94A3B8',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  reportLink: {
-    color: '#38BDF8',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  currentOverContainer: {
-    flexDirection: 'row',
-    marginTop: 15,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    padding: 12,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  recentBallsList: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  ballDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
-  },
-  ballText: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  noBallsText: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontStyle: 'italic',
-    fontWeight: '600',
-  },
-  overTotalBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    marginLeft: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  overTotalText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#CBD5E1',
-    textTransform: 'uppercase',
-  },
-  noInningsText: {
-    color: 'white',
-    fontSize: 18,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  activePlayersSection: {
-    padding: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-  },
-  utilityBtn: {
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  utilityBtnText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#64748B',
-  },
-  playerCardsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-  playerCard: {
-    width: (width - 55) / 2,
-    backgroundColor: 'white',
-    padding: 18,
-    borderRadius: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  playerCardActive: {
-    borderColor: '#0EA5E9',
-    backgroundColor: '#F0F9FF',
-  },
-  playerRoleLabel: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  playerCardName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1E293B',
-    marginBottom: 10,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  editEmoji: {
-    fontSize: 20,
-  },
-  tapToChange: {
-    fontSize: 8,
-    color: '#94A3B8',
-    fontWeight: 'bold',
-  },
-  bowlerCard: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  bowlerCardActive: {
-    borderColor: '#8B5CF6',
-    backgroundColor: '#F5F3FF',
-  },
-  bowlerName: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#1E293B',
-  },
-  bowlerIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bowlerEmoji: {
-    fontSize: 24,
-  },
-  scoringPad: {
-    paddingHorizontal: 20,
-    marginTop: 10,
-  },
-  padRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-  numpadBtn: {
-    width: (width - 70) / 4,
-    aspectRatio: 1,
-    backgroundColor: 'white',
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  boundaryBtn: {
-    backgroundColor: '#F8FAFC',
-  },
-  numpadText: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#1E293B',
-  },
-  padSubText: {
-    fontSize: 7,
-    fontWeight: '900',
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  extraBtn: {
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FEF3C7',
-  },
-  extraText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#64748B',
-  },
-  wicketBtn: {
-    flex: 2,
-    aspectRatio: 2.38,
-    backgroundColor: '#EF4444',
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  wicketBtnText: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: '900',
-  },
-  wicketSubText: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 9,
-    fontWeight: 'bold',
-  },
-  fullReportBtn: {
-    marginHorizontal: 20,
-    padding: 20,
-    backgroundColor: '#1E293B',
-    borderRadius: 20,
-    alignItems: 'center',
-    elevation: 4,
-  },
-  fullReportText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 35,
-    borderTopRightRadius: 35,
-    padding: 30,
-    maxHeight: '85%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 25,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#1E293B',
-  },
-  closeBtn: {
-    padding: 10,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 15,
-  },
-  closeModalText: {
-    fontSize: 18,
-    color: '#64748B',
-    fontWeight: 'bold',
-  },
-  playerListItem: {
-    flexDirection: 'row',
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  playerListItemDisabled: {
-    opacity: 0.35,
-  },
-  playerListItemInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  jerseyCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 18,
-  },
-  playerListNumber: {
-    fontWeight: '900',
-    color: '#1E293B',
-    fontSize: 16,
-  },
-  playerListName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  playerListRole: {
-    fontSize: 12,
-    color: '#94A3B8',
-    fontWeight: 'bold',
-  },
-  onFieldBadge: {
-    backgroundColor: '#F0F9FF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  onFieldText: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#0EA5E9',
-  },
-});
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3, shadowRadius: 20,
+  },
+  scoreHeader:              { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  battingLogoSmallContainer: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  battingLogoSmall:         { width: 24, height: 24, resizeMode: 'contain' },
+  battingTeamName:          { color: 'white', fontSize: 18, fontWeight: '800', flex: 1 },
+  liveIndicator:            { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  liveDot:                  { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  liveText:                 { fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
+  scoreMainRow:             { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  scoreMainText:            { color: 'white', fontSize: 56, fontWeight: '900' },
+  overBadge:                { backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+  overBadgeText:            { color: 'white', fontSize: 14, fontWeight: 'bold' },
+  targetSection:            { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 15, marginTop: 5 },
+  targetText:               { color: '#94A3B8', fontSize: 12, fontWeight: 'bold', flex: 1 },
+  reportLink:               { color: '#38BDF8', fontSize: 14, fontWeight: '800' },
+  currentOverContainer:     { flexDirection: 'row', marginTop: 15, backgroundColor: 'rgba(255,255,255,0.08)', padding: 12, borderRadius: 16, alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  recentBallsList:          { flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap', gap: 4 },
+  ballDot:                  { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', elevation: 2 },
+  ballText:                 { fontSize: 12, fontWeight: '900' },
+  noBallsText:              { fontSize: 13, color: '#94A3B8', fontStyle: 'italic', fontWeight: '600' },
+  overTotalBadge:           { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginLeft: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  overTotalText:            { fontSize: 11, fontWeight: '900', color: '#CBD5E1', textTransform: 'uppercase' },
+  noInningsText:            { color: 'white', fontSize: 18, textAlign: 'center', fontWeight: 'bold' },
 
+  // ── Field Operations ──────────────────────────────────────────────────────
+  activePlayersSection: { padding: 20 },
+  sectionHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  sectionTitle:         { fontSize: 12, fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase' },
+  utilityBtn:           { borderWidth: 1.5, borderColor: '#E2E8F0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  utilityBtnText:       { fontSize: 11, fontWeight: '900', color: '#64748B' },
+
+  playerCardsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  playerCard: {
+    width: (width - 55) / 2, backgroundColor: 'white', padding: 16,
+    borderRadius: 20, elevation: 4, shadowColor: '#000', shadowOpacity: 0.05,
+    shadowRadius: 10, borderWidth: 2, borderColor: 'transparent',
+  },
+  playerCardActive: { borderColor: '#0EA5E9', backgroundColor: '#F0F9FF' },
+  playerRoleLabel:  { fontSize: 9, fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', marginBottom: 6 },
+  playerCardName:   { fontSize: 15, fontWeight: '800', color: '#1E293B', marginBottom: 6 },
+  liveStatRow:      { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6, flexWrap: 'wrap' },
+  liveStatMain:     { fontSize: 20, fontWeight: '900', color: '#0EA5E9' },
+  liveStatSub:      { fontSize: 11, color: '#64748B', fontWeight: '600' },
+  liveStatBadge:    { backgroundColor: '#DBEAFE', color: '#1D4ED8', fontSize: 10, fontWeight: '900', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  cardFooter:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  tapToChange:      { fontSize: 8, color: '#CBD5E1', fontWeight: 'bold' },
+
+  bowlerCard: {
+    backgroundColor: 'white', padding: 18, borderRadius: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    elevation: 4, shadowColor: '#000', shadowOpacity: 0.05,
+    borderWidth: 2, borderColor: 'transparent',
+  },
+  bowlerCardActive:   { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' },
+  bowlerInfo:         { flex: 1 },
+  bowlerName:         { fontSize: 20, fontWeight: '900', color: '#1E293B', marginBottom: 4 },
+  bowlerStatsRow:     { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  bowlerStat:         { fontSize: 11, fontWeight: '800', color: '#7C3AED' },
+  bowlerStatDivider:  { fontSize: 11, color: '#C4B5FD', fontWeight: '900' },
+  bowlerIconContainer:{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  bowlerEmoji:        { fontSize: 24 },
+
+  // ── Scoring Pad ───────────────────────────────────────────────────────────
+  scoringPad: { paddingHorizontal: 20, marginTop: 10 },
+  padRow:     { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  numpadBtn:  {
+    width: (width - 70) / 4, aspectRatio: 1, backgroundColor: 'white',
+    borderRadius: 20, justifyContent: 'center', alignItems: 'center',
+    elevation: 6, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8,
+  },
+  boundaryBtn:    { backgroundColor: '#F8FAFC' },
+  numpadText:     { fontSize: 28, fontWeight: '900', color: '#1E293B' },
+  padSubText:     { fontSize: 7, fontWeight: '900', color: '#94A3B8', marginTop: 2 },
+  extraBtn:       { backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FEF3C7' },
+  extraText:      { fontSize: 16, fontWeight: '900', color: '#64748B' },
+  wicketBtn:      { flex: 2, aspectRatio: 2.38, backgroundColor: '#EF4444', borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  wicketBtnText:  { color: 'white', fontSize: 22, fontWeight: '900' },
+  wicketSubText:  { color: 'rgba(255,255,255,0.8)', fontSize: 9, fontWeight: 'bold' },
+
+  fullReportBtn:  { marginHorizontal: 20, padding: 20, backgroundColor: '#1E293B', borderRadius: 20, alignItems: 'center', elevation: 4 },
+  fullReportText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+
+  // ── Modals ────────────────────────────────────────────────────────────────
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.85)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: 'white', borderTopLeftRadius: 35, borderTopRightRadius: 35, padding: 28, maxHeight: '90%' },
+  modalHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
+  modalTitle:   { fontSize: 22, fontWeight: '900', color: '#1E293B' },
+  closeBtn:     { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 15 },
+  closeModalText: { fontSize: 18, color: '#64748B', fontWeight: 'bold' },
+
+  dismissedBanner: { backgroundColor: '#FEF2F2', borderRadius: 12, padding: 10, marginBottom: 14, alignItems: 'center' },
+  dismissedBannerText: { color: '#EF4444', fontWeight: '700', fontSize: 13 },
+
+  playerListItem: { flexDirection: 'row', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', alignItems: 'center', justifyContent: 'space-between' },
+  playerListItemDisabled: { opacity: 0.35 },
+  playerListItemInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  jerseyCircle:  { width: 44, height: 44, borderRadius: 14, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  playerListNumber: { fontWeight: '900', color: '#1E293B', fontSize: 16 },
+  playerListName:   { fontSize: 17, fontWeight: '800', color: '#1E293B' },
+  playerListRole:   { fontSize: 11, color: '#94A3B8', fontWeight: 'bold' },
+  playerListStat:   { fontSize: 11, color: '#3B82F6', fontWeight: '700', marginTop: 2 },
+  onFieldBadge:     { backgroundColor: '#F0F9FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  onFieldText:      { fontSize: 10, fontWeight: '900', color: '#0EA5E9' },
+  emptyList:        { alignItems: 'center', paddingVertical: 30 },
+  emptyListText:    { color: '#94A3B8', fontSize: 15, fontWeight: '600' },
+
+  // ── Wicket Modal ──────────────────────────────────────────────────────────
+  wicketSubLabel:  { fontSize: 14, color: '#64748B', marginBottom: 18, fontWeight: '600' },
+  wicketGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
+  wicketTypeBtn:   { width: (width - 96) / 3, paddingVertical: 14, backgroundColor: '#F8FAFC', borderRadius: 16, alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },
+  wicketTypeBtnActive: { borderColor: '#EF4444', backgroundColor: '#FEF2F2' },
+  wicketTypeEmoji: { fontSize: 22, marginBottom: 4 },
+  wicketTypeLabel: { fontSize: 11, fontWeight: '800', color: '#64748B', textAlign: 'center' },
+  wicketTypeLabelActive: { color: '#EF4444' },
+
+  fielderSection:      { marginBottom: 16 },
+  fielderSectionTitle: { fontSize: 13, fontWeight: '800', color: '#475569', marginBottom: 10 },
+  fielderChip:         { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#F1F5F9', borderRadius: 20, borderWidth: 2, borderColor: 'transparent' },
+  fielderChipActive:   { backgroundColor: '#EFF6FF', borderColor: '#3B82F6' },
+  fielderChipText:     { fontSize: 13, fontWeight: '700', color: '#475569' },
+  fielderChipTextActive: { color: '#1D4ED8' },
+  fielderSelected:     { marginTop: 8, fontSize: 13, color: '#059669', fontWeight: '700' },
+
+  confirmWicketBtn:         { backgroundColor: '#EF4444', padding: 18, borderRadius: 18, alignItems: 'center', marginTop: 8 },
+  confirmWicketBtnDisabled: { backgroundColor: '#FCA5A5' },
+  confirmWicketText:        { color: 'white', fontSize: 17, fontWeight: '900' },
+});

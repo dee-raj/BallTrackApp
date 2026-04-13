@@ -173,12 +173,16 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyEmoji}>🏏</Text>
               <Text style={styles.emptyText}>No matches found</Text>
-              <TouchableOpacity
-                style={styles.createFirstBtn}
-                onPress={() => navigation.navigate('CreateMatch')}
-              >
-                <Text style={styles.createFirstText}>Create Your First Match</Text>
-              </TouchableOpacity>
+              {!isGuest ? (
+                <TouchableOpacity
+                  style={styles.createFirstBtn}
+                  onPress={() => navigation.navigate('CreateMatch')}
+                >
+                  <Text style={styles.createFirstText}>Create Your First Match</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.emptyText, { color: '#EF4444', fontSize: 16 }]}>Please Wait for Admin to create matches</Text>
+              )}
             </View>
           }
         />
