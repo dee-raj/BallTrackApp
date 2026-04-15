@@ -16,9 +16,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.balltrack.app",
-      "versionCode": 1,
-      "minSdkVersion": 24,
-      "targetSdkVersion": 34
+      "versionCode": 1
     },
     "ios": {
       "icon": "./assets/icon.png",
@@ -34,6 +32,15 @@
         {
           "photosPermission": "The app accesses your photos to let you select player photos and team logos.",
           "cameraPermission": "The app accesses your camera to let you take player photos and team logos."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "targetSdkVersion": 34
+          }
         }
       ]
     ],
