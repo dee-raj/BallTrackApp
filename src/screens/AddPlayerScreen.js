@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { getTeams } from '../api/teams';
 import { createPlayer, addPlayerToTeam, getPlayers } from '../api/players';
@@ -20,7 +21,6 @@ export default function AddPlayerScreen({ navigation }) {
   const [teams, setTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -28,7 +28,6 @@ export default function AddPlayerScreen({ navigation }) {
 
   const loadData = async () => {
     try {
-      setRefreshing(true);
       const [teamsData, playersData] = await Promise.all([
         getTeams(),
         getPlayers()
@@ -37,9 +36,7 @@ export default function AddPlayerScreen({ navigation }) {
       setGlobalPlayers(playersData);
       if (teamsData.length > 0 && !selectedTeamId) setSelectedTeamId(teamsData[0].id);
     } catch (e) {
-      console.log('Error loading data', e);
-    } finally {
-      setRefreshing(false);
+      Alert.alert('Error', 'Failed to load teams and players');
     }
   };
 
@@ -62,7 +59,7 @@ export default function AddPlayerScreen({ navigation }) {
               aspect: [1, 1],
               quality: 0.7,
             });
-            if (!result.canceled) setPhotoUri(result.assets[0].uri);
+            if (!result.canceled && result.assets?.[0]?.uri) setPhotoUri(result.assets[0].uri);
           }
         },
         {
@@ -74,7 +71,7 @@ export default function AddPlayerScreen({ navigation }) {
               aspect: [1, 1],
               quality: 0.7,
             });
-            if (!result.canceled) setPhotoUri(result.assets[0].uri);
+            if (!result.canceled && result.assets?.[0]?.uri) setPhotoUri(result.assets[0].uri);
           }
         },
         { text: 'Cancel', style: 'cancel' }
@@ -154,22 +151,22 @@ export default function AddPlayerScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingBottom: 62 }}>
           <View style={styles.header}>
             <Text style={styles.title}>Player Registration</Text>
             <Text style={styles.subtitle}>Link a player to a team squad</Text>
           </View>
 
-          <View style={styles.tabContainer}>
-            <TouchableOpacity style={[styles.tab, mode === 'new' && styles.tabActive]} onPress={() => setMode('new')}>
-              <Text style={[styles.tabText, mode === 'new' && styles.tabTextActive]}>Brand New</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.tab, mode === 'existing' && styles.tabActive]} onPress={() => setMode('existing')}>
-              <Text style={[styles.tabText, mode === 'existing' && styles.tabTextActive]}>Existing Discovery</Text>
-            </TouchableOpacity>
-          </View>
-
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.tabContainer}>
+              <TouchableOpacity style={[styles.tab, mode === 'new' && styles.tabActive]} onPress={() => setMode('new')}>
+                <Text style={[styles.tabText, mode === 'new' && styles.tabTextActive]}>Brand New</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.tab, mode === 'existing' && styles.tabActive]} onPress={() => setMode('existing')}>
+                <Text style={[styles.tabText, mode === 'existing' && styles.tabTextActive]}>Existing Discovery</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>{mode === 'new' ? 'Player Profile' : 'Select Player'}</Text>
 
@@ -180,7 +177,7 @@ export default function AddPlayerScreen({ navigation }) {
                       <Image source={{ uri: photoUri }} style={styles.selectedPhoto} />
                     ) : (
                       <View style={styles.photoPlaceholder}>
-                        <Text style={styles.photoEmoji}>📸</Text>
+                        <MaterialCommunityIcons name="camera-outline" size={30} color="#64748B" />
                         <Text style={styles.photoActionText}>Add Photo</Text>
                       </View>
                     )}
@@ -296,10 +293,12 @@ export default function AddPlayerScreen({ navigation }) {
             </View>
 
             <TouchableOpacity style={styles.button} onPress={handleCreate} disabled={loading || teams.length === 0}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Confirm Registration 🏏</Text>}
+              <View style={styles.btnContent}>
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <Text style={styles.buttonText}>Confirm Registration</Text>
+                )}
+              </View>
             </TouchableOpacity>
-
-            <View style={{ height: 40 }} />
           </ScrollView>
         </View>
       </TouchableWithoutFeedback>
@@ -554,4 +553,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold'
   },
+  btnContent: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });

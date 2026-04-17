@@ -1,11 +1,14 @@
 import { io } from 'socket.io-client';
 import { BASE_URL } from './client';
 
-// The socket server is at the same origin as API but usually at root or /socket.io
-// We strip the /api suffix if it exists
-const SOCKET_URL = BASE_URL.replace('/api', '');
+let socketUrl = BASE_URL;
+if (socketUrl.includes('/api')) {
+  socketUrl = socketUrl.replace('/api', '');
+} else if (socketUrl.endsWith('/')) {
+  socketUrl = socketUrl.slice(0, -1);
+}
 
-export const socket = io(SOCKET_URL, {
+export const socket = io(socketUrl, {
   autoConnect: false,
 });
 

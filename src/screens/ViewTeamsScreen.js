@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Modal, TextInput, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getTeams, deleteTeam, updateTeam } from '../api/teams';
 import { getTeamPlayers, removePlayerFromTeam } from '../api/players';
 import { uploadImage } from '../api/uploads';
@@ -210,14 +211,18 @@ export default function ViewTeamsScreen({ navigation }) {
                 {!isGuest && (
                   <View style={styles.adminActions}>
                     <TouchableOpacity style={styles.actionBtn} onPress={() => setEditingTeam(item)}>
-                      <Text style={styles.actionEmoji}>✎</Text>
+                      <MaterialCommunityIcons name="pencil" size={16} color="#3B82F6" />
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteTeam(item)}>
-                      <Text style={[styles.actionEmoji, { color: '#EF4444' }]}>🗑</Text>
+                      <MaterialCommunityIcons name="trash-can-outline" size={16} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
                 )}
-                <Text style={styles.expandIcon}>{selectedTeam?.id === item.id ? '▲' : '▼'}</Text>
+                <MaterialCommunityIcons
+                  name={selectedTeam?.id === item.id ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#94A3B8"
+                />
               </View>
             </TouchableOpacity>
 
@@ -235,22 +240,38 @@ export default function ViewTeamsScreen({ navigation }) {
                   teamPlayers.length > 0 ? (
                     teamPlayers.map(tp => (
                       <View key={tp.id} style={styles.playerRow}>
-                        <View style={styles.jerseyBadge}>
-                          <Text style={styles.jerseyText}>{tp.jerseyNumber}</Text>
+                        <View style={styles.playerAvatarContainer}>
+                          <Image
+                            source={{ uri: tp.player?.photoUrl || 'https://png.pngtree.com/png-vector/20250523/ourlarge/pngtree-cricket-player-logo-vector-on-transparent-background-png-image_16363836.png' }}
+                            style={styles.playerRowAvatar}
+                          />
+                          <View style={styles.playerRowJerseyBadge}>
+                            <Text style={styles.playerRowJerseyText}>{tp.jerseyNumber}</Text>
+                          </View>
                         </View>
-                        <Text style={styles.playerName}>{tp.player?.fullName}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+
+                        <View style={styles.playerRowInfo}>
+                          <Text style={styles.playerRowName} numberOfLines={1}>
+                            {tp.player?.fullName}
+                          </Text>
+                          <Text style={styles.playerRowDob}>
+                            DOB: {tp.player?.dateOfBirth?.split('T')[0] || 'N/A'}
+                          </Text>
+                        </View>
+
+                        <View style={styles.playerRowActions}>
                           {tp.isCaptain && (
-                            <View style={styles.captainBadge}>
-                              <Text style={styles.captainText}>CAPTAIN</Text>
+                            <View style={styles.captainBadgeRow}>
+                              <MaterialCommunityIcons name="star" size={10} color="#92400E" />
+                              <Text style={styles.captainTextRow}>CAPTAIN</Text>
                             </View>
                           )}
                           {!isGuest && (
                             <TouchableOpacity
-                              style={[styles.actionBtn, { marginLeft: 10, padding: 6 }]}
+                              style={styles.removePlayerBtn}
                               onPress={() => handleRemovePlayerFromTeam(tp)}
                             >
-                              <Text style={[styles.actionEmoji, { color: '#EF4444', fontSize: 12 }]}>✕</Text>
+                              <MaterialCommunityIcons name="account-remove-outline" size={18} color="#EF4444" />
                             </TouchableOpacity>
                           )}
                         </View>
@@ -482,42 +503,88 @@ const styles = StyleSheet.create({
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
     backgroundColor: 'white',
-    padding: 10,
-    borderRadius: 12,
-    elevation: 1,
+    padding: 12,
+    borderRadius: 16,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
-  jerseyBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  playerAvatarContainer: {
+    position: 'relative',
+    marginRight: 15,
+  },
+  playerRowAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  playerRowJerseyBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
     backgroundColor: '#1E293B',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    borderWidth: 1.5,
+    borderColor: 'white',
+    paddingHorizontal: 2,
   },
-  jerseyText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 10,
-  },
-  playerName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1E293B',
-    flex: 1,
-  },
-  captainBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  captainText: {
+  playerRowJerseyText: {
+    color: 'white',
     fontSize: 8,
+    fontWeight: 'bold',
+  },
+  playerRowInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  playerRowName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  playerRowDob: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  playerRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  captainBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  captainTextRow: {
+    fontSize: 9,
     fontWeight: '900',
     color: '#92400E',
+    letterSpacing: 0.5,
+  },
+  removePlayerBtn: {
+    padding: 8,
+    marginLeft: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
   },
   emptySquad: {
     padding: 20,

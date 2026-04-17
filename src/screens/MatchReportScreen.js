@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Image, Dimensions, TouchableOpacity
 } from 'react-native';
 import { getInningsScoreboard, getMatchPerformance } from '../api/matches';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { socket, connectSocket, disconnectSocket, joinMatchRoom, leaveMatchRoom } from '../api/socket';
 
 const { width } = Dimensions.get('window');
@@ -137,6 +138,7 @@ export default function MatchReportScreen({ route }) {
       socket.off('ball:removed', handleUpdate);
       socket.off('innings:end', handleUpdate);
       leaveMatchRoom(matchId);
+      disconnectSocket();
     };
   }, [matchId]);
 
@@ -195,7 +197,11 @@ export default function MatchReportScreen({ route }) {
       <View style={styles.sectionWrapper}>
         <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(`overs_${inningsNum}`)} activeOpacity={0.7}>
           <Text style={styles.sectionTitleText}>Overs Timeline</Text>
-          <Text style={styles.expandIconSmall}>{isExpanded ? '▲' : '▼'}</Text>
+          <MaterialCommunityIcons 
+            name={isExpanded ? "chevron-up" : "chevron-down"} 
+            size={20} 
+            color="#94A3B8" 
+          />
         </TouchableOpacity>
 
         {isExpanded && sortedOvers.map(overNumber => {
@@ -218,7 +224,12 @@ export default function MatchReportScreen({ route }) {
                 <View style={styles.overStatsBadge}>
                   <Text style={styles.overStatsText}>{overRuns} Runs {overWickets > 0 ? `· ${overWickets}W` : ''}</Text>
                 </View>
-                <Text style={[styles.expandIconSmall, { marginLeft: 10 }]}>{isOverExp ? '▲' : '▼'}</Text>
+                <MaterialCommunityIcons 
+                  name={isOverExp ? "chevron-up" : "chevron-down"} 
+                  size={18} 
+                  color="#94A3B8" 
+                  style={{ marginLeft: 10 }}
+                />
               </TouchableOpacity>
 
               {isOverExp && (
@@ -298,7 +309,7 @@ export default function MatchReportScreen({ route }) {
         {/* Batting Scorecard */}
         <TouchableOpacity style={styles.sectionCollapseHeader} onPress={() => toggleSection(`batting_${inn.inningsNumber}`)} activeOpacity={0.7}>
           <Text style={styles.sectionTitleText}>Batting Scorecard</Text>
-          <Text style={styles.expandIconSmall}>{isSummaryExp ? '▲' : '▼'}</Text>
+          <MaterialCommunityIcons name={isSummaryExp ? "chevron-up" : "chevron-down"} size={18} color="#94A3B8" />
         </TouchableOpacity>
         {isSummaryExp && (
           <BattingScorecard scorecard={inningPerf?.battingScorecard} teamName={inn.battingTeam?.name} />
@@ -307,7 +318,7 @@ export default function MatchReportScreen({ route }) {
         {/* Bowling Scorecard */}
         <TouchableOpacity style={styles.sectionCollapseHeader} onPress={() => toggleSection(`bowling_${inn.inningsNumber}`)} activeOpacity={0.7}>
           <Text style={styles.sectionTitleText}>Bowling Figures</Text>
-          <Text style={styles.expandIconSmall}>{isBowlExp ? '▲' : '▼'}</Text>
+          <MaterialCommunityIcons name={isBowlExp ? "chevron-up" : "chevron-down"} size={18} color="#94A3B8" />
         </TouchableOpacity>
         {isBowlExp && (
           <BowlingScorecard scorecard={inningPerf?.bowlingScorecard} teamName={inn.bowlingTeam?.name} />
@@ -322,7 +333,10 @@ export default function MatchReportScreen({ route }) {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Match Report 📊</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.pageTitle}>Match Report</Text>
+          <MaterialCommunityIcons name="chart-bar" size={24} color="#38BDF8" />
+        </View>
         <Text style={styles.pageSubtitle}>Ball-by-ball performance review</Text>
       </View>
       {renderInnings(innings1)}
@@ -340,6 +354,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22, paddingTop: 20, paddingBottom: 18,
     backgroundColor: '#1E293B',
     borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   pageTitle:    { fontSize: 24, fontWeight: '900', color: 'white' },
   pageSubtitle: { fontSize: 13, color: '#94A3B8', marginTop: 3 },

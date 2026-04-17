@@ -9,6 +9,12 @@ import CreateMatchScreen from '../screens/CreateMatchScreen';
 import MatchReportScreen from '../screens/MatchReportScreen';
 import ViewTeamsScreen from '../screens/ViewTeamsScreen';
 import PlayersListScreen from '../screens/PlayersListScreen';
+import TournamentsListScreen from '../screens/TournamentsListScreen';
+import TournamentDetailsScreen from '../screens/TournamentDetailsScreen';
+import CreateTournamentScreen from '../screens/CreateTournamentScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import HelpSupportScreen from '../screens/HelpSupportScreen';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -24,6 +30,12 @@ export default function AppNavigator() {
         component={DashboardScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ headerShown: false }}
+      />
+
       <Stack.Screen
         name="MatchDetails"
         component={MatchDetailsScreen}
@@ -64,6 +76,27 @@ export default function AppNavigator() {
         component={PlayersListScreen}
         options={{ title: 'Player Directory' }}
       />
+      <Stack.Screen
+        name="TournamentsList"
+        component={TournamentsListScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TournamentDetails"
+        component={TournamentDetailsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CreateTournament"
+        component={CreateTournamentScreen}
+        options={{ title: 'New Tournament' }}
+      />
+      <Stack.Screen
+        name="HelpSupport"
+        component={HelpSupportScreen}
+        options={{ headerShown: false }}
+      />
+
     </Stack.Navigator>
   );
 }

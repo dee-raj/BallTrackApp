@@ -1,16 +1,19 @@
-import React, { useState, useContext, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Dimensions, Alert } from 'react-native';
+import React, { useState, useContext, useCallback, useRef } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Dimensions, Alert, Platform, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getMatches, deleteMatch } from '../api/matches';
 import { AuthContext } from '../context/AuthContext';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
+const horizontalPadding = width * 0.05;
 
 export default function DashboardScreen({ navigation }) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
-  const { logout, isGuest, user } = useContext(AuthContext);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const { isGuest, user, logout } = useContext(AuthContext);
 
   useFocusEffect(
     useCallback(() => {
@@ -24,7 +27,7 @@ export default function DashboardScreen({ navigation }) {
       const data = await getMatches();
       setMatches(data);
     } catch (e) {
-      console.log('Failed to load matches', e);
+      console.log(e.message || 'Failed to load matches');
     } finally {
       setLoading(false);
     }
@@ -33,7 +36,7 @@ export default function DashboardScreen({ navigation }) {
   const handleDeleteMatch = (match) => {
     Alert.alert(
       'Delete Match',
-      `Are you sure you want to delete the match between ${match.homeTeam.name} and ${match.awayTeam.name}? All scoring data will be lost.`,
+      `Delete match: ${match.homeTeam.name} vs ${match.awayTeam.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -45,7 +48,7 @@ export default function DashboardScreen({ navigation }) {
               await deleteMatch(match.id);
               loadMatches();
             } catch (e) {
-              Alert.alert('Error', e?.response?.data?.message || 'Failed to delete match');
+              Alert.alert('Error', 'Failed to delete match');
             } finally {
               setDeletingId(null);
             }
@@ -55,171 +58,230 @@ export default function DashboardScreen({ navigation }) {
     );
   };
 
-  const getStatusStyle = (status) => {
-    switch (status) {
-      case 'live': return { bg: '#FEF2F2', text: '#EF4444', label: 'LIVE' };
-      case 'completed': return { bg: '#F0FDF4', text: '#16A34A', label: 'COMPLETED' };
-      case 'scheduled': return { bg: '#EFF6FF', text: '#2563EB', label: 'UPCOMING' };
-      default: return { bg: '#F8FAFC', text: '#64748B', label: status?.toUpperCase() };
-    }
-  };
-
   const renderMatch = ({ item }) => {
-    const status = getStatusStyle(item.matchStatus);
-    const matchDate = new Date(item.matchDate).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric'
-    });
+    const isLive = item.matchStatus === 'live' || item.matchStatus === 'in_progress' || item.matchStatus === 'second_innings';
+    const isCompleted = item.matchStatus === 'completed';
+    const matchDate = new Date(item.matchDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    // Linking scores to specific teams regardless of batting order
+    const homeInnings = item.innings?.find(i => i.battingTeamId === item.homeTeamId || i.battingTeamId === item.homeTeam?.id);
+    const awayInnings = item.innings?.find(i => i.battingTeamId === item.awayTeamId || i.battingTeamId === item.awayTeam?.id);
 
     return (
       <TouchableOpacity
-        style={[styles.matchCard, { backgroundColor: status.bg }, deletingId === item.id && { opacity: 0.5 }]}
+        style={[styles.matchCard, deletingId === item.id && styles.dimmed]}
         onPress={() => navigation.navigate('MatchDetails', { matchId: item.id })}
       >
         <View style={styles.cardHeader}>
-          <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-            {item.matchStatus === 'live' && <View style={styles.liveDot} />}
-            <Text style={[styles.statusText, { color: status.text }]}>{status.label}</Text>
+          <View style={[styles.statusBadge, isLive ? styles.statusLive : (isCompleted ? styles.statusCompleted : styles.statusUpcoming)]}>
+            {isLive && <View style={styles.liveDot} />}
+            <Text style={[styles.statusText, isLive ? styles.textLive : (isCompleted ? styles.textCompleted : styles.textUpcoming)]}>
+              {isLive ? 'LIVE' : (isCompleted ? 'COMPLETED' : 'UPCOMING')}
+            </Text>
           </View>
           <View style={styles.headerRight}>
             <Text style={styles.matchDateText}>{matchDate}</Text>
             {!isGuest && (
-              <TouchableOpacity onPress={() => handleDeleteMatch(item)} style={styles.deleteMatchBtn}>
-                <Text style={styles.deleteEmoji}>🗑</Text>
+              <TouchableOpacity onPress={() => handleDeleteMatch(item)} style={styles.deleteBtn}>
+                <MaterialCommunityIcons name="trash-can-outline" size={16} color="#94A3B8" />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        <View style={styles.teamsRow}>
-          <View style={styles.teamInRow}>
-            <View style={styles.logoContainer}>
-              <Image
-                style={styles.teamLogo}
-                source={{ uri: item.homeTeam.logoUrl || 'https://via.placeholder.com/50' }}
-              />
-            </View>
-            <Text style={styles.teamNameText} numberOfLines={1}>{item.homeTeam.name}</Text>
+        <View style={styles.matchMain}>
+          <View style={styles.teamContainer}>
+            <Image
+              source={{ uri: item.homeTeam.logoUrl || 'https://via.placeholder.com/60' }}
+              style={styles.teamBadge}
+            />
+            <Text style={styles.teamName} numberOfLines={1}>{item.homeTeam.shortName}</Text>
+            {homeInnings && (
+              <Text style={styles.scoreText}>{homeInnings.totalRuns}/{homeInnings.totalWickets}</Text>
+            )}
           </View>
 
-          <View style={styles.vsContainer}>
-            <Text style={styles.vsText}>VS</Text>
+          <View style={styles.vsCenter}>
+            <View style={styles.vsCircle}>
+              <Text style={styles.vsText}>VS</Text>
+            </View>
           </View>
 
-          <View style={styles.teamInRow}>
-            <View style={styles.logoContainer}>
-              <Image
-                style={styles.teamLogo}
-                source={{ uri: item.awayTeam.logoUrl || 'https://via.placeholder.com/50' }}
-              />
-            </View>
-            <Text style={styles.teamNameText} numberOfLines={1}>{item.awayTeam.name}</Text>
+          <View style={styles.teamContainer}>
+            <Image
+              source={{ uri: item.awayTeam.logoUrl || 'https://via.placeholder.com/60' }}
+              style={styles.teamBadge}
+            />
+            <Text style={styles.teamName} numberOfLines={1}>{item.awayTeam.shortName}</Text>
+            {awayInnings && (
+              <Text style={styles.scoreText}>{awayInnings.totalRuns}/{awayInnings.totalWickets}</Text>
+            )}
           </View>
         </View>
 
-        <View style={styles.cardFooter}>
-          <Text style={styles.venueText}>📍 {item.venue || "TBD"}</Text>
-          <Text style={styles.viewDetailsText}>View Details →</Text>
+        {item.resultMargin && (
+          <View style={styles.resultPill}>
+            <MaterialCommunityIcons name="trophy-outline" size={12} color="#15803D" />
+            <Text style={styles.resultPillText}>
+              {item.winnerTeam?.name} won by {item.resultMargin}
+            </Text>
+          </View>
+        )}
+
+
+        <View style={styles.venueRow}>
+          <MaterialCommunityIcons name="map-marker-outline" size={14} color="#94A3B8" />
+          <Text style={styles.venueText}>{item.venue || 'No Venue'}</Text>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
-  };
-
-  const getGreetingName = () => {
-    if (isGuest) return 'Guest';
-    return user?.fullName;
-  };
-
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerGreeting}>{getGreeting()} {getGreetingName()}!</Text>
-          <Text style={styles.headerTitle}>Dashboard</Text>
+      <View style={styles.premiumHeader}>
+        <View style={styles.userInfo}>
+          <Text style={styles.greeting}>Hello, {isGuest ? 'Cricket Fan' : user?.fullName}</Text>
+          <Text style={styles.dashboardTitle}>Match Center</Text>
         </View>
         <View style={styles.headerActions}>
-          {!isGuest && (
-            <TouchableOpacity onPress={() => navigation.navigate('PlayersList')} style={styles.circleBtn}>
-              <Text style={styles.circleBtnEmoji}>👥</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={logout} style={[styles.circleBtn, { backgroundColor: '#FEF2F2' }]}>
-            <Text style={[styles.circleBtnEmoji, { color: '#EF4444' }]}>🚪</Text>
-          </TouchableOpacity>
+          <Pressable
+            style={styles.headerIconBtn}
+            onPress={() => setMenuVisible(true)}
+          >
+            <MaterialCommunityIcons name="dots-vertical" size={22} color="#475569" />
+          </Pressable>
         </View>
+        <Modal
+          visible={menuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.dropdownMenu}>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setMenuVisible(false);
+                      navigation.navigate('TournamentsList');
+                    }}
+                  >
+                    <MaterialCommunityIcons name="trophy-variant" size={18} color="#0EA5E9" />
+                    <Text style={styles.menuItemText}>Tournaments</Text>
+                  </TouchableOpacity>
+
+                  {!isGuest && (<>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        navigation.navigate('PlayersList');
+                      }}
+                    >
+                      <MaterialCommunityIcons name="account-group" size={18} color="#475569" />
+                      <Text style={styles.menuItemText}>Players</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        setMenuVisible(false);
+                        navigation.navigate('Profile');
+                      }}
+                    >
+                      <MaterialCommunityIcons name="account-circle" size={18} color="#8B5CF6" />
+                      <Text style={styles.menuItemText}>Profile</Text>
+                    </TouchableOpacity>
+
+                  </>)}
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setMenuVisible(false);
+                      navigation.navigate('ViewTeams')
+                    }}
+                  >
+                    <MaterialCommunityIcons name="database-outline" size={18} color="#475569" />
+                    <Text style={styles.menuItemText}>Teams Directory</Text>
+                  </TouchableOpacity>
+
+                  {isGuest && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => {
+                          setMenuVisible(false);
+                          navigation.navigate('HelpSupport');
+                        }}
+                      >
+                        <MaterialCommunityIcons name="help-circle" size={18} color="#8B5CF6" />
+                        <Text style={styles.menuItemText}>Help & Support</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() => {
+                          setMenuVisible(false);
+                          logout();
+                        }}
+                      >
+                        <MaterialCommunityIcons name="login" size={18} color="#8B5CF6" />
+                        <Text style={styles.menuItemText}>Login</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       </View>
 
       {loading && !deletingId ? (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#1E293B" />
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#0EA5E9" />
         </View>
       ) : (
         <FlatList
           data={matches}
           renderItem={renderMatch}
           keyExtractor={item => item.id}
-          contentContainerStyle={[styles.list, !isGuest && { paddingBottom: 120 }]}
-          refreshing={loading}
+          contentContainerStyle={[styles.list, !isGuest && styles.listWithFab]}
           onRefresh={loadMatches}
+          refreshing={loading}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyEmoji}>🏏</Text>
-              <Text style={styles.emptyText}>No matches found</Text>
-              {!isGuest ? (
-                <TouchableOpacity
-                  style={styles.createFirstBtn}
-                  onPress={() => navigation.navigate('CreateMatch')}
-                >
-                  <Text style={styles.createFirstText}>Create Your First Match</Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={[styles.emptyText, { color: '#EF4444', fontSize: 16 }]}>Please Wait for Admin to create matches</Text>
-              )}
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons name="cricket" size={80} color="#E2E8F0" />
+              <Text style={styles.emptyTitle}>No Matches Found</Text>
+              <Text style={styles.emptySub}>Start by creating your first match or series.</Text>
             </View>
           }
         />
       )}
 
       {!isGuest && (
-        <View style={styles.fabContainer}>
-          <View style={styles.fabBar}>
-            <TouchableOpacity style={styles.fabIconBtn} onPress={() => navigation.navigate('CreateMatch')}>
-              <View style={[styles.emojiCircle, { backgroundColor: 'rgba(255, 59, 48, 0.15)' }]}>
-                <Text style={styles.fabEmoji}>🏏</Text>
+        <View style={styles.navBarContainer}>
+          <View style={styles.navBar}>
+            <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('CreateMatch')}>
+              <View style={[styles.navIconBg, { backgroundColor: '#E0F2FE' }]}>
+                <MaterialCommunityIcons name="plus" size={24} color="#0EA5E9" />
               </View>
-              <Text style={styles.fabLabel}>New Match</Text>
+              <Text style={styles.navLabel}>Match</Text>
             </TouchableOpacity>
-
-            <View style={styles.verticalSeparator} />
-            <TouchableOpacity style={styles.fabIconBtn} onPress={() => navigation.navigate('CreateTeam')}>
-              <View style={[styles.emojiCircle, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
-                <Text style={styles.fabEmoji}>🛡️</Text>
+            <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('CreateTeam')}>
+              <View style={[styles.navIconBg, { backgroundColor: '#DCFCE7' }]}>
+                <MaterialCommunityIcons name="shield-plus-outline" size={20} color="#16A34A" />
               </View>
-              <Text style={styles.fabLabel}>New Team</Text>
+              <Text style={styles.navLabel}>Team</Text>
             </TouchableOpacity>
-
-            <View style={styles.verticalSeparator} />
-            <TouchableOpacity style={styles.fabIconBtn} onPress={() => navigation.navigate('AddPlayer')}>
-              <View style={[styles.emojiCircle, { backgroundColor: 'rgba(255, 149, 0, 0.15)' }]}>
-                <Text style={styles.fabEmoji}>👤</Text>
+            <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('AddPlayer')}>
+              <View style={[styles.navIconBg, { backgroundColor: '#FEF9C3' }]}>
+                <MaterialCommunityIcons name="account-plus-outline" size={20} color="#CA8A04" />
               </View>
-              <Text style={styles.fabLabel}>New Player</Text>
-            </TouchableOpacity>
-
-            <View style={styles.verticalSeparator} />
-            <TouchableOpacity style={styles.fabIconBtn} onPress={() => navigation.navigate('ViewTeams')}>
-              <View style={[styles.emojiCircle, { backgroundColor: 'rgba(0, 122, 255, 0.15)' }]}>
-                <Text style={styles.fabEmoji}>📂</Text>
-              </View>
-              <Text style={styles.fabLabel}>Data</Text>
+              <Text style={styles.navLabel}>Player</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -231,98 +293,132 @@ export default function DashboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F5F9', // Slightly darker background to make cards pop
   },
-  header: {
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#f9ebfdff',
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-  headerGreeting: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1E293B',
-  },
-  headerActions: {
-    flexDirection: 'row',
-  },
-  circleBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 10,
-  },
-  circleBtnEmoji: {
-    fontSize: 18,
-  },
-  loaderContainer: {
+  center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  premiumHeader: {
+    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingBottom: 25,
+    paddingHorizontal: horizontalPadding,
+    backgroundColor: '#bcdeffff',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  greeting: {
+    fontSize: 14,
+    color: '#815983ff',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontFamily: 'monospace',
+  },
+  dashboardTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#1E293B',
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#aaeaffff',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 100 : 90,
+    right: horizontalPadding,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    paddingVertical: 12,
+    minWidth: 180,
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: Platform.OS === 'ios' ? 100 : 90,
+    paddingRight: horizontalPadding,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  menuItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
+    marginLeft: 12,
+  },
   list: {
-    padding: 20,
+    padding: horizontalPadding,
+  },
+  listWithFab: {
+    paddingBottom: 120,
   },
   matchCard: {
     backgroundColor: 'white',
     borderRadius: 24,
-    padding: 20,
+    padding: 18,
     marginBottom: 20,
-    elevation: 4,
+    elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#f1f5f9ff',
+  },
+  dimmed: {
+    opacity: 0.5,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  deleteMatchBtn: {
-    marginLeft: 10,
-    padding: 5,
-    backgroundColor: 'white',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#F24444',
-  },
-  deleteEmoji: {
-    fontSize: 12,
+    marginBottom: 16,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 4,
     borderRadius: 10,
   },
+  statusLive: { backgroundColor: '#FEF2F2' },
+  statusCompleted: { backgroundColor: '#F0FDF4' },
+  statusUpcoming: { backgroundColor: '#F8FAFC' },
   liveDot: {
     width: 6,
     height: 6,
@@ -335,147 +431,145 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.5,
   },
-  matchDateText: {
-    fontSize: 12,
-    color: '#94A3B8',
-    fontWeight: 'bold',
-  },
-  teamsRow: {
+  textLive: { color: '#EF4444' },
+  textCompleted: { color: '#16A34A' },
+  textUpcoming: { color: '#94A3B8' },
+  headerRight: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  matchDateText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94A3B8',
+  },
+  deleteBtn: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  matchMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 10,
+    marginBottom: 16,
   },
-  teamInRow: {
+  teamContainer: {
+    flex: 1,
     alignItems: 'center',
-    width: width * 0.3,
   },
-  logoContainer: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+  teamBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 15,
     backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
   },
-  teamLogo: {
-    width: 36,
-    height: 36,
-    resizeMode: 'contain',
-  },
-  teamNameText: {
-    fontSize: 14,
-    fontWeight: 'bold',
+  teamName: {
+    fontSize: 13,
+    fontWeight: '800',
     color: '#1E293B',
     textAlign: 'center',
+    marginBottom: 4,
   },
-  vsContainer: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#1E293B',
+  scoreText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#334155',
+  },
+  vsCenter: {
+    paddingHorizontal: 15,
+  },
+  vsCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
   },
   vsText: {
-    color: 'white',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
+    color: '#94A3B8',
   },
-  cardFooter: {
-    marginTop: 15,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: '#F8FAFC',
+  resultPill: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  resultPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#15803D',
+    marginLeft: 6,
+  },
+  venueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
   },
   venueText: {
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: '700',
     color: '#64748B',
-    fontWeight: '600',
-    textTransform: 'capitalize',
   },
-  viewDetailsText: {
-    fontSize: 12,
-    color: '#2563EB',
-    fontWeight: 'bold',
-  },
-  emptyContainer: {
+  emptyState: {
+    flex: 1,
     alignItems: 'center',
     marginTop: 100,
   },
-  emptyEmoji: {
-    fontSize: 60,
-    marginBottom: 20,
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#475569',
+    marginTop: 20,
   },
-  emptyText: {
-    fontSize: 18,
-    color: '#64748B',
-    fontWeight: 'bold',
-    marginBottom: 20,
+  emptySub: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 40,
   },
-  createFirstBtn: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  createFirstText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  fabContainer: {
+  navBarContainer: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 30,
     left: 20,
     right: 20,
-    alignItems: 'center',
   },
-  fabBar: {
+  navBar: {
     flexDirection: 'row',
-    backgroundColor: '#1E293B',
-    borderRadius: 25,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    backgroundColor: '#185505ff',
+    borderRadius: 24,
+    padding: 10,
     justifyContent: 'space-around',
-    width: '100%',
+    elevation: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 8,
+    shadowRadius: 20,
   },
-  verticalSeparator: {
-    width: 1,
-    height: '100%',
-    backgroundColor: '#F8FAFC',
-  },
-  fabIconBtn: {
+  navItem: {
     alignItems: 'center',
-    justifyContent: 'center',
-    width: 70,
+    width: width * 0.2,
   },
-  emojiCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  navIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 4,
   },
-  fabEmoji: {
-    fontSize: 20,
-  },
-  fabLabel: {
+  navLabel: {
     color: '#94A3B8',
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
   }
 });
-
-

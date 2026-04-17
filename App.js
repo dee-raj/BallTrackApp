@@ -4,9 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import { AuthContext, AuthProvider } from './src/context/AuthContext';
-import { StatusBar } from 'expo-status-bar';
 
-// Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 function NavigationWrapper() {
@@ -17,8 +15,6 @@ function NavigationWrapper() {
     async function prepare() {
       try {
         // Pre-load fonts or make any API calls if needed
-        // For now, we just simulate a small wait or check auth
-        await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (e) {
         console.warn(e);
       } finally {
@@ -30,7 +26,6 @@ function NavigationWrapper() {
 
   useEffect(() => {
     if (appIsReady) {
-      // This tells the splash screen to hide immediately
       SplashScreen.hideAsync();
     }
   }, [appIsReady]);
@@ -50,7 +45,6 @@ export default function App() {
   return (
     <AuthProvider>
       <NavigationWrapper />
-      {/* <StatusBar style="auto" /> */}
     </AuthProvider>
   );
 }

@@ -1,28 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image, Dimensions, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getTeams } from '../api/teams';
+import { getTournaments } from '../api/tournaments';
 import { createMatch } from '../api/matches';
+
 
 const { width } = Dimensions.get('window');
 
 export default function CreateMatchScreen({ navigation }) {
   const [teams, setTeams] = useState([]);
+  const [tournaments, setTournaments] = useState([]);
   const [homeTeamId, setHomeTeamId] = useState('');
   const [awayTeamId, setAwayTeamId] = useState('');
+  const [tournamentId, setTournamentId] = useState('');
   const [overs, setOvers] = useState('20');
+  const [playersPerSide, setPlayersPerSide] = useState('11');
   const [venue, setVenue] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadTeams();
+    loadData();
   }, []);
 
-  const loadTeams = async () => {
+  const loadData = async () => {
     try {
-      const data = await getTeams();
-      setTeams(data);
+      const [teamsData, tournamentsData] = await Promise.all([
+        getTeams(),
+        getTournaments()
+      ]);
+      setTeams(teamsData);
+      setTournaments(tournamentsData);
     } catch (e) {
-      console.log('Error loading teams', e);
+      Alert.alert('Error', 'Failed to load data');
     }
   };
 
@@ -41,8 +51,10 @@ export default function CreateMatchScreen({ navigation }) {
       const match = await createMatch({
         homeTeamId,
         awayTeamId,
+        tournamentId: tournamentId || undefined,
         matchDate: new Date().toISOString(),
         overs: parseInt(overs),
+        playersPerSide: parseInt(playersPerSide),
         venue: venue || undefined,
       });
 
@@ -92,6 +104,39 @@ export default function CreateMatchScreen({ navigation }) {
             {renderTeamPicker(homeTeamId, setHomeTeamId, "Home Team")}
             {renderTeamPicker(awayTeamId, setAwayTeamId, "Away Team")}
 
+            {tournaments.length > 0 && (
+              <View style={styles.pickerSection}>
+                <Text style={styles.label}>Select Tournament (Optional)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.teamsHorizontal}>
+                  <TouchableOpacity
+                    style={[styles.teamCard, tournamentId === '' && styles.teamCardActive]}
+                    onPress={() => setTournamentId('')}
+                  >
+                    <View style={styles.logoContainer}>
+                      <MaterialCommunityIcons name="close-circle-outline" size={30} color="#94A3B8" />
+                    </View>
+                    <Text style={[styles.teamName, tournamentId === '' && styles.teamNameActive]}>None</Text>
+                  </TouchableOpacity>
+                  {tournaments.map(t => (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={[styles.teamCard, tournamentId === t.id && styles.teamCardActive]}
+                      onPress={() => setTournamentId(t.id)}
+                    >
+                      <View style={styles.logoContainer}>
+                        <MaterialCommunityIcons 
+                          name={t.type === 'league' ? 'trophy-outline' : 'tournament'} 
+                          size={30} 
+                          color={tournamentId === t.id ? '#007AFF' : '#94A3B8'} 
+                        />
+                      </View>
+                      <Text style={[styles.teamName, tournamentId === t.id && styles.teamNameActive]} numberOfLines={1}>{t.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             <View style={styles.inputSection}>
               <Text style={styles.label}>Match Config</Text>
               <View style={styles.inputRow}>
@@ -105,11 +150,21 @@ export default function CreateMatchScreen({ navigation }) {
                     keyboardType="number-pad"
                   />
                 </View>
+                <View style={[styles.inputWrapper, { flex: 1, marginRight: 10 }]}>
+                  <Text style={styles.inputLabel}>PLAYERS</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="11"
+                    value={playersPerSide}
+                    onChangeText={setPlayersPerSide}
+                    keyboardType="number-pad"
+                  />
+                </View>
                 <View style={[styles.inputWrapper, { flex: 2 }]}>
                   <Text style={styles.inputLabel}>VENUE</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Mumbai, Maharashtra"
+                    placeholder="Mumbai"
                     value={venue}
                     onChangeText={setVenue}
                   />
@@ -122,7 +177,14 @@ export default function CreateMatchScreen({ navigation }) {
               onPress={handleCreate}
               disabled={loading || teams.length < 2}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Setup Match 🏏</Text>}
+              <View style={styles.btnContent}>
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Text style={styles.buttonText}>Setup Match</Text>
+                    <MaterialCommunityIcons name="cricket" size={24} color="white" />
+                  </>
+                )}
+              </View>
             </TouchableOpacity>
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -260,5 +322,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
   buttonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  btnContent: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });
 

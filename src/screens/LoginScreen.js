@@ -2,9 +2,9 @@ import React, { useState, useContext } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions,
-  ScrollView, TouchableWithoutFeedback, Keyboard,
-  Image
+  ScrollView, TouchableWithoutFeedback, Keyboard, Image
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -75,7 +75,14 @@ export default function LoginScreen() {
                 onPress={continueAsGuest}
                 disabled={isLoading}
               >
-                <Text style={styles.primaryGuestText}>Watch Now as Audience 🏟️</Text>
+                {isLoading ? (
+                  <ActivityIndicator color="#880a0aff" />
+                ) : (
+                  <View style={styles.btnContent}>
+                    <Text style={styles.primaryGuestText}>Watch Now as Audience</Text>
+                    <MaterialCommunityIcons name="stadium-variant" size={20} color="white" />
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -128,14 +135,17 @@ export default function LoginScreen() {
                 {isLoading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.loginBtnText}>Proceed to Scoring Table 🔐</Text>
+                  <View style={styles.btnContent}>
+                    <Text style={styles.loginBtnText}>Proceed to Scoring Table</Text>
+                    <MaterialCommunityIcons name="shield-lock-outline" size={20} color="white" />
+                  </View>
                 )}
               </TouchableOpacity>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
-    </SafeAreaView>
+      </TouchableWithoutFeedback >
+    </SafeAreaView >
   );
 }
 
@@ -308,5 +318,10 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 15,
     fontWeight: 'bold',
+  },
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
   },
 });

@@ -3,11 +3,9 @@ import apiClient from './client';
 export const uploadImage = async (uri) => {
   const formData = new FormData();
   
-  // Create the file object
-  // On web, uri might be different, but for native it's usually the file path
-  const filename = uri.split('/').pop();
+  const filename = uri?.split('/').pop() || 'image.jpg';
   const match = /\.(\w+)$/.exec(filename);
-  const type = match ? `image/${match[1]}` : `image`;
+  const type = match ? `image/${match[1]}` : 'image/jpeg';
 
   formData.append('image', {
     uri: uri,

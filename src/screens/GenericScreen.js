@@ -4,7 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 export default function GenericScreen({ route }) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{route.name}</Text>
+      <Text style={styles.title}>{route.params?.name || route.name}</Text>
       <Text>Coming soon in this drawer option!</Text>
     </View>
   );

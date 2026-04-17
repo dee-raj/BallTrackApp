@@ -1,13 +1,15 @@
 import React, { useEffect, useState, useContext, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Alert, Modal, Image } from 'react-native';
-
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Alert, Modal, Image, Dimensions, Platform } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import apiClient from '../api/client';
 import { AuthContext } from '../context/AuthContext';
 import { deletePlayer, updatePlayer } from '../api/players';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../api/uploads';
 
-// Memoized Helper function for age
+const { width } = Dimensions.get('window');
+const horizontalPadding = width * 0.05;
+
 const calculateAge = (dob) => {
   if (!dob) return 'N/A';
   const today = new Date();
@@ -22,39 +24,48 @@ const calculateAge = (dob) => {
 
 const PlayerCard = React.memo(({ item, index, isGuest, onEdit, onDelete, isDeleting }) => {
   const playerAge = useMemo(() => calculateAge(item.dateOfBirth), [item.dateOfBirth]);
-  const dobString = useMemo(() => item.dateOfBirth ? item.dateOfBirth.split('T')[0] : 'N/A', [item.dateOfBirth]);
 
   return (
-    <View style={[styles.playerCard, isDeleting && { opacity: 0.5 }]}>
-      <Text style={styles.playerNumber}>{index + 1}.</Text>
-      <View style={styles.avatarContainer}>
-        {item.photoUrl ? (
-          <Image source={{ uri: item.photoUrl }} style={styles.avatarImage} />
-        ) : (
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{item.fullName[0].toUpperCase()}</Text>
+    <View style={[styles.playerCard, isDeleting && styles.dimmed]}>
+      <View style={styles.cardMain}>
+        <View style={styles.avatarWrapper}>
+          {item.photoUrl ? (
+            <Image source={{ uri: item.photoUrl }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarInitial}>{item.fullName[0].toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={styles.rankBadge}>
+            <Text style={styles.rankText}>{index + 1}</Text>
+          </View>
+        </View>
+
+        <View style={styles.playerInfo}>
+          <Text style={styles.playerName} numberOfLines={1}>{item.fullName}</Text>
+          <View style={styles.statsStrip}>
+            <View style={styles.statTag}>
+              <MaterialCommunityIcons name="calendar-account" size={12} color="#64748B" />
+              <Text style={styles.statTagText}>{playerAge} YRS</Text>
+            </View>
+            <View style={[styles.statTag, { backgroundColor: '#F0F9FF' }]}>
+              <MaterialCommunityIcons name="phone" size={12} color="#0EA5E9" />
+              <Text style={[styles.statTagText, { color: '#0EA5E9' }]}>{item.phone || 'N/A'}</Text>
+            </View>
+          </View>
+        </View>
+
+        {!isGuest && (
+          <View style={styles.actionColumn}>
+            <TouchableOpacity style={[styles.circleAction, { backgroundColor: '#F0F9FF' }]} onPress={() => onEdit(item)}>
+              <MaterialCommunityIcons name="pencil" size={16} color="#0EA5E9" />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.circleAction, { backgroundColor: '#FEF2F2' }]} onPress={() => onDelete(item)}>
+              <MaterialCommunityIcons name="trash-can" size={16} color="#EF4444" />
+            </TouchableOpacity>
           </View>
         )}
       </View>
-
-      <View style={styles.info}>
-        <Text style={styles.name}>{item.fullName}</Text>
-        <View style={styles.detailsRow}>
-          <Text style={styles.detailText}>Age: {playerAge}</Text>
-          <Text style={styles.detailText}>DOB: {dobString}</Text>
-        </View>
-      </View>
-
-      {!isGuest && (
-        <View style={styles.adminActions}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b8d3ffff' }]} onPress={() => onEdit(item)}>
-            <Text style={styles.actionEmoji}>✎</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#ffddddff' }]} onPress={() => onDelete(item)}>
-            <Text style={styles.actionEmoji}>🗑</Text>
-          </TouchableOpacity>
-        </View>
-      )}
     </View>
   );
 });
@@ -86,55 +97,26 @@ export default function PlayersListScreen() {
   }, []);
 
   const pickEditImage = async () => {
-    Alert.alert(
-      'Update Photo',
-      'Choose a photo source',
-      [
-        {
-          text: 'Camera',
-          onPress: async () => {
-            const permission = await ImagePicker.requestCameraPermissionsAsync();
-            if (!permission.granted) {
-              Alert.alert('Permission Denied', 'We need camera access to take photos.');
-              return;
-            }
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
-            });
-            if (!result.canceled) setNewPhotoUri(result.assets[0].uri);
-          }
-        },
-        {
-          text: 'Library',
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
-            });
-            if (!result.canceled) setNewPhotoUri(result.assets[0].uri);
-          }
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled) setNewPhotoUri(result.assets[0].uri);
   };
 
   const handleDeletePlayer = useCallback((player) => {
-    Alert.alert('Delete Player', `Are you sure you want to permanently delete ${player.fullName}? This cannot be undone.`, [
+    Alert.alert('Delete Player', `Are you sure you want to delete ${player.fullName}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Delete Permanently', style: 'destructive', onPress: async () => {
+        text: 'Delete', style: 'destructive', onPress: async () => {
           try {
             setDeletingId(player.id);
             await deletePlayer(player.id);
             fetchPlayers();
           } catch (e) {
-            Alert.alert('Error', e?.response?.data?.message || 'Failed deleting player');
+            Alert.alert('Error', 'Failed deleting player');
           } finally {
             setDeletingId(null);
           }
@@ -144,23 +126,14 @@ export default function PlayersListScreen() {
   }, [fetchPlayers]);
 
   const submitUpdatePlayer = useCallback(async () => {
-    if (!editingPlayer?.fullName.trim()) return;
+    if (!editingPlayer?.fullName?.trim()) return;
     try {
       setIsUpdating(true);
       let photoUrl = editingPlayer.photoUrl;
-
       if (newPhotoUri) {
-        try {
-          const uploadResult = await uploadImage(newPhotoUri);
-          photoUrl = uploadResult.url;
-        } catch (err) {
-          Alert.alert('Upload Error', 'Failed to upload new photo. Continue anyway?', [
-            { text: 'Cancel', style: 'cancel', onPress: () => { throw new Error('Abort') } },
-            { text: 'Yes', onPress: () => { } }
-          ]);
-        }
+        const uploadResult = await uploadImage(newPhotoUri);
+        photoUrl = uploadResult.url;
       }
-
       await updatePlayer(editingPlayer.id, {
         fullName: editingPlayer.fullName,
         dateOfBirth: editingPlayer.dateOfBirth ?? null,
@@ -172,18 +145,14 @@ export default function PlayersListScreen() {
       setNewPhotoUri(null);
       fetchPlayers();
     } catch (e) {
-      if (e.message !== 'Abort') {
-        Alert.alert('Error', e?.response?.data?.message || 'Failed updating player');
-      }
+      Alert.alert('Error', 'Failed updating player');
     } finally {
       setIsUpdating(false);
     }
   }, [editingPlayer, newPhotoUri, fetchPlayers]);
 
   const filteredPlayers = useMemo(() => {
-    return players.filter(p =>
-      p.fullName.toLowerCase().includes(search.toLowerCase())
-    );
+    return players.filter(p => p.fullName.toLowerCase().includes(search.toLowerCase()));
   }, [players, search]);
 
   const renderItem = useCallback(({ item, index }) => (
@@ -197,56 +166,53 @@ export default function PlayersListScreen() {
     />
   ), [isGuest, handleDeletePlayer, deletingId]);
 
-  if (loading && players.length === 0) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#1E293B" />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Player Directory</Text>
-        <Text style={styles.subtitle}>Total <Text style={{ fontWeight: 'bold', color: '#15AF24', fontSize: 20 }}>{players.length}</Text> Registered</Text>
+      <View style={styles.premiumHeader}>
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerTitle}>Directory</Text>
+          <Text style={styles.headerSub}>{players.length} TOTAL PLAYERS</Text>
+        </View>
+        <View style={styles.searchBox}>
+          <MaterialCommunityIcons name="magnify" size={20} color="#94A3B8" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search players..."
+            value={search}
+            onChangeText={setSearch}
+            placeholderTextColor="#CBD5E1"
+          />
+        </View>
       </View>
 
-      <View style={styles.searchContainer}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          style={styles.searchBar}
-          placeholder="Search by name..."
-          placeholderTextColor="#94A3B8"
-          value={search}
-          onChangeText={setSearch}
+      {loading && players.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#0EA5E9" />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredPlayers}
+          renderItem={renderItem}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="account-search-outline" size={80} color="#E2E8F0" />
+              <Text style={styles.emptyTitle}>No Players Found</Text>
+            </View>
+          }
         />
-      </View>
+      )}
 
-      <FlatList
-        data={filteredPlayers}
-        keyExtractor={item => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        renderItem={renderItem}
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyEmoji}>👥</Text>
-            <Text style={styles.emptyText}>No players found</Text>
-          </View>
-        }
-      />
-
-      <Modal visible={!!editingPlayer} animationType="fade" transparent>
+      {/* UPDATE PLAYER MODAL */}
+      <Modal visible={!!editingPlayer} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Update Player Info</Text>
-              <TouchableOpacity onPress={() => { setEditingPlayer(null); setNewPhotoUri(null); }}>
-                <Text style={styles.closeModalText}>✕</Text>
+              <Text style={styles.modalTitle}>Update Player</Text>
+              <TouchableOpacity onPress={() => { setEditingPlayer(null); setNewPhotoUri(null); }} style={styles.closeBtn}>
+                <MaterialCommunityIcons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
 
@@ -257,70 +223,70 @@ export default function PlayersListScreen() {
                 <Image source={{ uri: editingPlayer.photoUrl }} style={styles.selectedPhoto} />
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Text style={styles.photoEmoji}>📸</Text>
-                  <Text style={styles.photoActionText}>Change Photo</Text>
+                  <MaterialCommunityIcons name="camera" size={32} color="#94A3B8" />
+                  <Text style={styles.photoActionText}>Tap to Change</Text>
                 </View>
               )}
             </TouchableOpacity>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>FULL NAME</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="E.g. Sachin Tendulkar"
-                value={editingPlayer?.fullName || ''}
-                onChangeText={v => setEditingPlayer({ ...editingPlayer, fullName: v })}
-              />
-            </View>
+            <View style={styles.formSection}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>FULL NAME</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editingPlayer?.fullName || ''}
+                  onChangeText={v => setEditingPlayer({ ...editingPlayer, fullName: v })}
+                  placeholder="Sachin Tendulkar"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>DATE OF BIRTH</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="YYYY-MM-DD"
-                value={editingPlayer?.dateOfBirth || ''}
-                onChangeText={v => setEditingPlayer({ ...editingPlayer, dateOfBirth: v })}
-              />
-            </View>
+              <View style={styles.inputGroupRow}>
+                <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
+                  <Text style={styles.inputLabel}>DOB (YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={editingPlayer?.dateOfBirth ? (editingPlayer.dateOfBirth.includes('T') ? editingPlayer.dateOfBirth.split('T')[0] : editingPlayer.dateOfBirth) : ''}
+                    onChangeText={v => setEditingPlayer({ ...editingPlayer, dateOfBirth: v })}
+                    placeholder="1990-01-01"
+                  />
+                </View>
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={styles.inputLabel}>PHONE</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={editingPlayer?.phone || ''}
+                    onChangeText={v => setEditingPlayer({ ...editingPlayer, phone: v })}
+                    placeholder="10 Digits"
+                    keyboardType="phone-pad"
+                  />
+                </View>
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>PHONE NUMBER</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="+91 XXXXX XXXXX"
-                value={editingPlayer?.phone || ''}
-                maxLength={10}
-                onChangeText={v => setEditingPlayer({ ...editingPlayer, phone: v })}
-                keyboardType="phone-pad"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="player@example.com"
-                value={editingPlayer?.email || ''}
-                onChangeText={v => setEditingPlayer({ ...editingPlayer, email: v })}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editingPlayer?.email || ''}
+                  onChangeText={v => setEditingPlayer({ ...editingPlayer, email: v })}
+                  placeholder="player@example.com"
+                  autoCapitalize="none"
+                />
+              </View>
             </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
-                onPress={() => setEditingPlayer(null)}
-                style={styles.modalCancelBtn}
+                onPress={() => { setEditingPlayer(null); setNewPhotoUri(null); }}
+                style={styles.cancelBtn}
               >
-                <Text style={styles.modalCancelText}>Dismiss</Text>
+                <Text style={styles.cancelBtnText}>Dismiss</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={submitUpdatePlayer}
-                style={styles.modalSubmitBtn}
+                style={[styles.saveBtn, isUpdating && { opacity: 0.7 }]}
                 disabled={isUpdating}
               >
-                {isUpdating ? <ActivityIndicator color="#fff" />
-                  : <Text style={styles.modalSubmitText}>Save Changes</Text>}
+                {isUpdating ? <ActivityIndicator color="white" size="small" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -333,268 +299,285 @@ export default function PlayersListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC'
+    backgroundColor: '#F8FAFC',
   },
   center: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
-  header: {
-    padding: 25,
-    backgroundColor: '#c4dffaff',
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    elevation: 4,
+  premiumHeader: {
+    paddingTop: Platform.OS === 'ios' ? 10 : 8,
+    backgroundColor: '#e9f4ffff',
+    paddingHorizontal: horizontalPadding,
+    paddingBottom: 25,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.1,
-    shadowRadius: 10,
-    marginBottom: 20,
+    shadowRadius: 12,
+    zIndex: 10,
   },
-  title: {
-    fontSize: 26,
+  headerInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 15,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#1E293B',
+  },
+  headerSub: {
+    fontSize: 10,
     fontWeight: '800',
-    color: '#1E293B'
+    color: '#94A3B8',
+    letterSpacing: 1,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  searchContainer: {
+  searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    marginHorizontal: 15,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    borderRadius: 15,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#4a8554ff',
+    paddingHorizontal: 15,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginLeft: 10,
+  },
+  list: {
+    padding: horizontalPadding,
+    paddingTop: 20,
+  },
+  playerCard: {
+    backgroundColor: 'white',
+    borderRadius: 24,
+    marginBottom: 16,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 5,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c9e3fdff',
   },
-  searchIcon: {
-    fontSize: 16,
-    marginRight: 10,
-  },
-  searchBar: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1E293B',
-    fontWeight: '600',
-  },
-  playerCard: {
+  cardMain: {
     flexDirection: 'row',
-    backgroundColor: 'white',
-    borderRadius: 20,
-    marginHorizontal: 15,
-    marginBottom: 15,
     padding: 15,
     alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
   },
-  playerNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    marginRight: 12,
-  },
-  avatarContainer: {
+  avatarWrapper: {
+    position: 'relative',
     marginRight: 15,
   },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  avatarImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+  },
+  avatarPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
     backgroundColor: '#1E293B',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  avatarText: {
+  avatarInitial: {
     color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold'
+    fontSize: 24,
+    fontWeight: '900',
   },
-  info: {
-    flex: 1
-  },
-  name: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    textTransform: 'capitalize'
-  },
-  detailsRow: {
-    flexDirection: 'row',
-    marginTop: 4,
-  },
-  detailText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-    marginRight: 15,
-  },
-  adminActions: {
-    flexDirection: 'column',
+  rankBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#0EA5E9',
+    borderWidth: 2,
+    borderColor: 'white',
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 10,
   },
-  actionBtn: {
-    padding: 10,
+  rankText: {
+    color: 'white',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  playerInfo: {
+    flex: 1,
+  },
+  playerName: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#1E293B',
+    marginBottom: 6,
+    textTransform: 'capitalize',
+  },
+  statsStrip: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 8,
-    marginLeft: 8,
+    gap: 4,
   },
-  actionEmoji: {
-    fontSize: 14,
-    color: '#1E293B'
+  statTagText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#64748B',
+  },
+  actionColumn: {
+    gap: 8,
+  },
+  circleAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dimmed: {
+    opacity: 0.4,
   },
   emptyContainer: {
+    paddingTop: 100,
     alignItems: 'center',
-    marginTop: 100,
   },
-  emptyEmoji: {
-    fontSize: 50,
-    marginBottom: 15,
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#CBD5E1',
+    marginTop: 15,
   },
-  emptyText: {
-    fontSize: 16,
-    color: '#94A3B8',
-    fontWeight: 'bold'
-  },
+  // Modal Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
-    justifyContent: 'center',
-    padding: 20,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: 'white',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: 25,
-    borderRadius: 24,
-    elevation: 20,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 25,
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1E293B',
-  },
-  closeModalText: {
-    fontSize: 20,
-    color: '#64748B',
-    padding: 5,
-  },
-  inputGroup: {
-    marginBottom: 15,
-  },
-  inputLabel: {
-    fontSize: 10,
     fontWeight: '900',
-    color: '#94A3B8',
-    marginBottom: 5,
-    marginLeft: 5,
-    letterSpacing: 0.5,
-  },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    fontWeight: 'bold',
     color: '#1E293B',
+  },
+  closeBtn: {
+    padding: 5,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
   },
   photoPicker: {
     alignSelf: 'center',
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: '#F1F5F9',
-    marginBottom: 20,
-    overflow: 'hidden',
+    width: 100,
+    height: 100,
+    borderRadius: 35,
+    backgroundColor: '#F8FAFC',
     borderWidth: 2,
     borderColor: '#E2E8F0',
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 25,
+    overflow: 'hidden',
   },
   selectedPhoto: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
   },
   photoPlaceholder: {
     alignItems: 'center',
   },
-  photoEmoji: {
-    fontSize: 24,
-    marginBottom: 2,
-  },
   photoActionText: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#64748B',
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#94A3B8',
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
+  formSection: {
+    marginBottom: 20,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputGroupRow: {
+    flexDirection: 'row',
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#94A3B8',
+    marginBottom: 6,
+    marginLeft: 4,
+    letterSpacing: 0.5,
+  },
+  input: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
   },
   modalActions: {
-    gap: 8,
-    marginTop: 20,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: Platform.OS === 'ios' ? 20 : 10,
   },
-  modalCancelBtn: {
+  cancelBtn: {
     flex: 1,
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
     paddingVertical: 15,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    elevation: 4,
+    alignItems: 'center',
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
   },
-  modalCancelText: {
-    color: '#EF4444',
-    fontWeight: 'bold',
+  cancelBtnText: {
     fontSize: 16,
+    fontWeight: '800',
+    color: '#64748B',
   },
-  modalSubmitBtn: {
+  saveBtn: {
     flex: 2,
-    backgroundColor: '#3a9c23ff',
     paddingVertical: 15,
-    paddingHorizontal: 10,
-    borderRadius: 14,
     alignItems: 'center',
+    borderRadius: 16,
+    backgroundColor: '#1E293B',
     elevation: 4,
   },
-  modalSubmitText: {
-    color: 'white',
-    fontWeight: 'bold',
+  saveBtnText: {
     fontSize: 16,
+    fontWeight: '800',
+    color: 'white',
   }
 });
-
 

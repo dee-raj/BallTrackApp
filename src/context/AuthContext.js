@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { login as apiLogin, register as apiRegister, getMe } from '../api/auth';
+import { login as apiLogin, getMe } from '../api/auth';
 
 export const AuthContext = createContext(null);
 
@@ -32,6 +32,7 @@ export const AuthProvider = ({ children }) => {
     const data = await apiLogin(email, password);
     await AsyncStorage.setItem('token', data.token);
     setUser(data.user);
+    setIsGuest(false);
   };
 
   const logout = async () => {
@@ -44,18 +45,12 @@ export const AuthProvider = ({ children }) => {
     setIsGuest(true);
   };
 
-  const register = async (email, password, fullName) => {
-    const data = await apiRegister(email, password, fullName);
-    await AsyncStorage.setItem('token', data.token);
-    setUser(data.user);
-  };
-
   if (loading) {
-    return null; // Or a loading spinner
+    return null;
   }
 
   return (
-    <AuthContext.Provider value={{ user, isGuest, login, logout, register, continueAsGuest }}>
+    <AuthContext.Provider value={{ user, setUser, isGuest, login, logout, continueAsGuest }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { createTeam } from '../api/teams';
 import { uploadImage } from '../api/uploads';
@@ -65,7 +66,7 @@ export default function CreateTeamScreen({ navigation }) {
       let finalLogoUrl = logo;
 
       // If it's a local URI, upload it
-      if (logo.startsWith('file://') || logo.startsWith('content://')) {
+      if (logo && (logo.startsWith('file://') || logo.startsWith('content://'))) {
         try {
           const uploadResult = await uploadImage(logo);
           finalLogoUrl = uploadResult.url;
@@ -115,7 +116,7 @@ export default function CreateTeamScreen({ navigation }) {
                     <Image source={{ uri: logo }} style={styles.logoPreview} />
                   ) : (
                     <View style={styles.logoPlaceholder}>
-                      <Text style={styles.logoPlaceholderEmoji}>🛡️</Text>
+                      <MaterialCommunityIcons name="shield-outline" size={30} color="#64748B" />
                       <Text style={styles.uploadText}>Upload</Text>
                     </View>
                   )}
@@ -167,11 +168,16 @@ export default function CreateTeamScreen({ navigation }) {
               onPress={handleCreate}
               disabled={loading}
             >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.submitBtnText}>Finalize Registry 🏏</Text>
-              )}
+              <View style={styles.btnContent}>
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Text style={styles.submitBtnText}>Finalize Registry</Text>
+                    <MaterialCommunityIcons name="cricket" size={20} color="white" />
+                  </>
+                )}
+              </View>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -312,5 +318,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  btnContent: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });
 

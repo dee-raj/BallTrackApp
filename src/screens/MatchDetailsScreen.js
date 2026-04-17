@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView
 import { getMatchScoreboard, recordToss, startInnings, declareInnings, deleteMatch } from '../api/matches';
 import { AuthContext } from '../context/AuthContext';
 import { socket, connectSocket, disconnectSocket, joinMatchRoom, leaveMatchRoom } from '../api/socket';
+import { MaterialCommunityIcons, FontAwesome } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
@@ -23,7 +24,6 @@ export default function MatchDetailsScreen({ route, navigation }) {
     joinMatchRoom(matchId);
 
     const handleUpdate = () => {
-      console.log('Realtime update received for match details');
       loadScoreboardSilently();
     };
 
@@ -36,6 +36,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
       socket.off('ball:removed', handleUpdate);
       socket.off('innings:end', handleUpdate);
       leaveMatchRoom(matchId);
+      disconnectSocket();
     };
   }, [matchId]);
 
@@ -68,7 +69,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
   }
 
   const match = scoreboard;
-  const currentInnings = match?.innings?.find(i => i.status === 'in_progress') || match?.innings?.[match?.innings?.length - 1];
+  const currentInnings = match?.innings?.find(i => i.status === 'in_progress') || (match?.innings?.length > 0 ? match.innings[match.innings.length - 1] : null);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -87,8 +88,14 @@ export default function MatchDetailsScreen({ route, navigation }) {
 
       <View style={styles.headerCard}>
         <View style={styles.matchMeta}>
-          <Text style={styles.venueText}>📍 {match?.venue || 'No Venue specified'}</Text>
-          <Text style={styles.dateText}>📅 {new Date(match?.matchDate).toLocaleDateString()}</Text>
+          <View style={styles.metaItem}>
+            <MaterialCommunityIcons name="map-marker-outline" size={14} color="#64748B" />
+            <Text style={styles.venueText}>{match?.venue || 'No Venue specified'}</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <MaterialCommunityIcons name="calendar-month-outline" size={14} color="#64748B" />
+            <Text style={styles.dateText}>{new Date(match?.matchDate).toLocaleDateString()}</Text>
+          </View>
         </View>
 
         <View style={styles.teamsContainer}>
@@ -126,12 +133,14 @@ export default function MatchDetailsScreen({ route, navigation }) {
         {match?.tossWinnerId ? (
           <View style={styles.tossBadge}>
             <Text style={styles.tossBadgeText}>
-              🪙 Toss: {match?.tossWinnerId === match?.homeTeam?.id ? match?.homeTeam?.name : match?.awayTeam?.name} elected to {match?.tossDecision}
+              <FontAwesome name="gg-circle" size={14} color="#0369A1" /> Toss: {match?.tossWinnerId === match?.homeTeam?.id ? match?.homeTeam?.name : match?.awayTeam?.name} elected to {match?.tossDecision}
             </Text>
           </View>
         ) : (
           <View style={styles.tossBadgePending}>
-            <Text style={styles.tossBadgeTextPending}>🕒 Toss Pending</Text>
+            <Text style={styles.tossBadgeTextPending}>
+              <MaterialCommunityIcons name="clock-outline" size={14} color="#64748B" /> Toss Pending
+            </Text>
           </View>
         )}
       </View>
@@ -158,8 +167,11 @@ export default function MatchDetailsScreen({ route, navigation }) {
 
           {match?.matchStatus === 'completed' && match?.result && (
             <View style={styles.resultContainer}>
-              <Text style={styles.resultTitle}>Match Result</Text>
-              <Text style={styles.resultDescription}>🏆 {match.result} by {match.resultMargin || ''}</Text>
+              <Text style={styles.resultDescription}>
+                <MaterialCommunityIcons name="trophy-outline" size={18} color="#15803D" />{' '}
+                <Text style={styles.resultTitle}>Match Result</Text>
+              </Text>
+              <Text style={styles.resultDescription}>{match.result}</Text>
             </View>
           )}
         </View>
@@ -177,7 +189,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
                 style={[styles.actionCard, { borderLeftColor: '#007AFF' }]}
                 onPress={() => setShowTossModal(true)}
               >
-                <Text style={styles.actionEmoji}>🪙</Text>
+                <MaterialCommunityIcons name="cube-scan" size={24} color="#007AFF" style={styles.actionIcon} />
                 <Text style={styles.actionLabel}>Record Toss</Text>
               </TouchableOpacity>
             )}
@@ -200,7 +212,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
                   }
                 }}
               >
-                <Text style={styles.actionEmoji}>🏏</Text>
+                <MaterialCommunityIcons name="cricket" size={24} color="#f59e0b" style={styles.actionIcon} />
                 <Text style={styles.actionLabel}>Start 1st Innings</Text>
               </TouchableOpacity>
             )}
@@ -223,7 +235,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
                   }
                 }}
               >
-                <Text style={styles.actionEmoji}>🔄</Text>
+                <MaterialCommunityIcons name="cached" size={24} color="#f59e0b" style={styles.actionIcon} />
                 <Text style={styles.actionLabel}>Start 2nd Innings</Text>
               </TouchableOpacity>
             )}
@@ -247,7 +259,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
                   ]);
                 }}
               >
-                <Text style={styles.actionEmoji}>⏹️</Text>
+                <MaterialCommunityIcons name="stop-circle-outline" size={24} color="#ef4444" style={styles.actionIcon} />
                 <Text style={styles.actionLabel}>Declare</Text>
               </TouchableOpacity>
             )}
@@ -257,7 +269,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
                 style={[styles.actionCard, { borderLeftColor: '#34C759', backgroundColor: '#ecfdf5' }]}
                 onPress={() => navigation.navigate('MatchScoring', { matchId })}
               >
-                <Text style={styles.actionEmoji}>📊</Text>
+                <MaterialCommunityIcons name="chart-bar" size={24} color="#34C759" style={styles.actionIcon} />
                 <Text style={styles.actionLabel}>Go to Scoring</Text>
               </TouchableOpacity>
             )}
@@ -269,7 +281,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
             style={[styles.actionCard, { borderLeftColor: '#8b5cf6' }]}
             onPress={() => navigation.navigate('MatchReport', { matchId })}
           >
-            <Text style={styles.actionEmoji}>📄</Text>
+            <MaterialCommunityIcons name="file-document-outline" size={24} color="#8b5cf6" style={styles.actionIcon} />
             <Text style={styles.actionLabel}>Full Report</Text>
           </TouchableOpacity>
         )}
@@ -293,7 +305,7 @@ export default function MatchDetailsScreen({ route, navigation }) {
               ]);
             }}
           >
-            <Text style={styles.actionEmoji}>🗑️</Text>
+            <MaterialCommunityIcons name="trash-can-outline" size={24} color="#dc2626" style={styles.actionIcon} />
             <Text style={styles.actionLabel}>Delete Match</Text>
           </TouchableOpacity>
         )}
@@ -326,13 +338,19 @@ export default function MatchDetailsScreen({ route, navigation }) {
                 style={[styles.modalBtn, tossDecision === 'bat' && styles.modalBtnActive]}
                 onPress={() => setTossDecision('bat')}
               >
-                <Text style={[styles.modalBtnText, tossDecision === 'bat' && styles.modalBtnTextActive]}>🏏 Bat</Text>
+                <View style={styles.btnContent}>
+                  <MaterialCommunityIcons name="cricket" size={18} color={tossDecision === 'bat' ? '#fff' : '#64748B'} />
+                  <Text style={[styles.modalBtnText, tossDecision === 'bat' && styles.modalBtnTextActive]}>Bat</Text>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, tossDecision === 'field' && styles.modalBtnActive]}
                 onPress={() => setTossDecision('field')}
               >
-                <Text style={[styles.modalBtnText, tossDecision === 'field' && styles.modalBtnTextActive]}>🛡️ Field</Text>
+                <View style={styles.btnContent}>
+                  <MaterialCommunityIcons name="shield-outline" size={18} color={tossDecision === 'field' ? '#fff' : '#64748B'} />
+                  <Text style={[styles.modalBtnText, tossDecision === 'field' && styles.modalBtnTextActive]}>Field</Text>
+                </View>
               </TouchableOpacity>
             </View>
 
@@ -406,6 +424,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 20,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   venueText: {
     color: '#64748B',
@@ -614,8 +637,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     borderLeftWidth: 4,
   },
-  actionEmoji: {
-    fontSize: 24,
+  actionIcon: {
     marginBottom: 8,
   },
   actionLabel: {
@@ -655,6 +677,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
+  },
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   modalBtn: {
     flex: 1,
