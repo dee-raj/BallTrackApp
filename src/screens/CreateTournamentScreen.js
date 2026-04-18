@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image, Dimensions, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getTeams } from '../api/teams';
 import { createTournament, addTeamsToTournament } from '../api/tournaments';
+import { AuthContext } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -13,6 +14,8 @@ export default function CreateTournamentScreen({ navigation }) {
   const [teams, setTeams] = useState([]);
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  const { isGuest } = useContext(AuthContext);
 
   useEffect(() => {
     loadTeams();
@@ -36,6 +39,11 @@ export default function CreateTournamentScreen({ navigation }) {
   };
 
   const handleCreate = async () => {
+    if (isGuest) {
+      Alert.alert('Guest Mode', 'You are in guest mode. Please login to create a tournament.');
+      navigation.replace('Login');
+      return;
+    }
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter a tournament name');
       return;
@@ -65,8 +73,8 @@ export default function CreateTournamentScreen({ navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -110,10 +118,10 @@ export default function CreateTournamentScreen({ navigation }) {
                     style={[styles.typeBtn, type === t && styles.typeBtnActive]}
                     onPress={() => setType(t)}
                   >
-                    <MaterialCommunityIcons 
-                      name={t === 'league' ? 'trophy-outline' : 'tournament'} 
-                      size={20} 
-                      color={type === t ? 'white' : '#64748B'} 
+                    <MaterialCommunityIcons
+                      name={t === 'league' ? 'trophy-outline' : 'tournament'}
+                      size={20}
+                      color={type === t ? 'white' : '#64748B'}
                     />
                     <Text style={[styles.typeBtnText, type === t && styles.typeBtnTextActive]}>
                       {t.toUpperCase()}

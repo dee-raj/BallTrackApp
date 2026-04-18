@@ -115,14 +115,20 @@ export default function TournamentsListScreen({ navigation }) {
               <View style={styles.emptyIconCircle}>
                 <MaterialCommunityIcons name="trophy-outline" size={60} color="#CBD5E1" />
               </View>
-              <Text style={styles.emptyText}>No Active Tournaments</Text>
-              <Text style={styles.emptySub}>Create a league or knockout series to start tracking points.</Text>
-              <TouchableOpacity
-                style={styles.createMainBtn}
-                onPress={() => navigation.navigate('CreateTournament')}
-              >
-                <Text style={styles.createMainBtnText}>Setup Tournament</Text>
-              </TouchableOpacity>
+              <Text style={styles.emptyText}>No Active Tournaments or Series</Text>
+              <Text style={styles.emptySub}>{
+                isGuest ?
+                  'Login to create a tournament or series. OR wait for an admin to create one.' :
+                  'Create a league or knockout series to start tracking points.'
+              }</Text>
+              {!isGuest && (
+                <TouchableOpacity
+                  style={styles.createMainBtn}
+                  onPress={() => navigation.navigate('CreateTournament')}
+                >
+                  <Text style={styles.createMainBtnText}>Setup Tournament</Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
         />

@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
-export default function LoginScreen() {
+export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -125,6 +125,12 @@ export default function LoginScreen() {
                     <Text style={styles.eyeText}>{isShowingPass ? 'SHOW' : 'HIDE'}</Text>
                   </TouchableOpacity>
                 </View>
+                <TouchableOpacity 
+                  style={styles.forgotPassBtn} 
+                  onPress={() => navigation.navigate('ForgotPassword')}
+                >
+                  <Text style={styles.forgotPassText}>Forgot Password?</Text>
+                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
@@ -323,5 +329,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10
+  },
+  forgotPassBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    marginRight: 5,
+  },
+  forgotPassText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#3B82F6',
   },
 });
