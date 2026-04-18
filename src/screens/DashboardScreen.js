@@ -262,7 +262,7 @@ export default function DashboardScreen({ navigation }) {
         />
       )}
 
-      {!isGuest && (
+      {(!isGuest && user?.role === 'admin') && (
         <View style={styles.navBarContainer}>
           <View style={styles.navBar}>
             <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('CreateMatch')}>
@@ -347,12 +347,13 @@ const styles = StyleSheet.create({
   },
   dropdownMenu: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 100 : 90,
+    top: Platform.OS === 'ios' ? 100 : 75,
     right: horizontalPadding,
     backgroundColor: 'white',
     borderRadius: 16,
-    paddingVertical: 12,
-    minWidth: 180,
+    paddingTop: 12,
+    paddingBottom: 24,
+    minWidth: 200,
     elevation: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },

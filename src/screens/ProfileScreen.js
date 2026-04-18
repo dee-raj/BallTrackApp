@@ -312,7 +312,11 @@ export default function ProfileScreen({ navigation }) {
                   style={styles.eyeToggle}
                   onPress={() => setShowPassword({ ...isShowPassword, currentPassword: !isShowPassword.currentPassword })}
                 >
-                  <Text style={styles.eyeText}>{isShowPassword.currentPassword ? 'HIDE' : 'SHOW'}</Text>
+                  <MaterialCommunityIcons
+                    name={isShowPassword.currentPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color="#64748B"
+                  />
                 </TouchableOpacity>
               )}
             </View>
@@ -331,7 +335,11 @@ export default function ProfileScreen({ navigation }) {
                   style={styles.eyeToggle}
                   onPress={() => setShowPassword({ ...isShowPassword, newPassword: !isShowPassword.newPassword })}
                 >
-                  <Text style={styles.eyeText}>{isShowPassword.newPassword ? 'HIDE' : 'SHOW'}</Text>
+                  <MaterialCommunityIcons
+                    name={isShowPassword.newPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color="#64748B"
+                  />
                 </TouchableOpacity>
               )}
             </View>
@@ -350,7 +358,11 @@ export default function ProfileScreen({ navigation }) {
                   style={styles.eyeToggle}
                   onPress={() => setShowPassword({ ...isShowPassword, confirmPassword: !isShowPassword.confirmPassword })}
                 >
-                  <Text style={styles.eyeText}>{isShowPassword.confirmPassword ? 'HIDE' : 'SHOW'}</Text>
+                  <MaterialCommunityIcons
+                    name={isShowPassword.confirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color="#64748B"
+                  />
                 </TouchableOpacity>
               )}
             </View>
@@ -517,14 +529,15 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0, 0.5)',
   },
   modalContent: {
     backgroundColor: '#fafcffff',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderBottomEndRadius: 30,
+    borderTopStartRadius: 30,
     padding: 24,
+    marginHorizontal: 6,
     paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
   modalHeader: {

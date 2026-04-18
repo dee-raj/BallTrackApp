@@ -84,7 +84,7 @@ export default function TournamentsListScreen({ navigation }) {
           <MaterialCommunityIcons name="arrow-left" size={24} color="#1E293B" />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Tournaments</Text>
+          <Text style={styles.headerTitle}>All Tournaments</Text>
           <Text style={styles.headerSub}>Active Series & Leagues</Text>
         </View>
         {!isGuest && (
@@ -162,11 +162,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     zIndex: 10,
+    backgroundColor: '#d1b5ffff',
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 45,
+    height: 45,
+    borderRadius: 50,
     backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
@@ -182,7 +183,7 @@ const styles = StyleSheet.create({
   },
   headerSub: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#1d0746ff',
     fontWeight: '700',
   },
   addTournamentBtn: {

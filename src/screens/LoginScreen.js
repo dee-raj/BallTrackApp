@@ -2,7 +2,8 @@ import React, { useState, useContext } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions,
-  ScrollView, TouchableWithoutFeedback, Keyboard, Image
+  ScrollView, TouchableWithoutFeedback, Keyboard, Image,
+  StatusBar
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
@@ -41,6 +42,10 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#d0ffa3ff"
+      />
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -122,11 +127,15 @@ export default function LoginScreen({ navigation }) {
                     style={styles.eyeToggle}
                     onPress={() => setIsShowingPass(!isShowingPass)}
                   >
-                    <Text style={styles.eyeText}>{isShowingPass ? 'SHOW' : 'HIDE'}</Text>
+                    <MaterialCommunityIcons
+                      name={isShowingPass ? 'eye-off-outline' : 'eye-outline'}
+                      size={22}
+                      color="#64748B"
+                    />
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity 
-                  style={styles.forgotPassBtn} 
+                <TouchableOpacity
+                  style={styles.forgotPassBtn}
                   onPress={() => navigation.navigate('ForgotPassword')}
                 >
                   <Text style={styles.forgotPassText}>Forgot Password?</Text>
@@ -147,6 +156,13 @@ export default function LoginScreen({ navigation }) {
                   </View>
                 )}
               </TouchableOpacity>
+
+              <View style={styles.registerContainer}>
+                <Text style={styles.registerText}>Don't have an organization? </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                  <Text style={styles.registerLink}>Register</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -339,5 +355,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     color: '#3B82F6',
+  },
+  registerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 25,
+  },
+  registerText: {
+    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  registerLink: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

@@ -106,7 +106,11 @@ export default function ResetPasswordScreen({ navigation, route }) {
                   style={styles.eyeToggle}
                   onPress={() => setIsShowingPass(!isShowingPass)}
                 >
-                  <Text style={styles.eyeText}>{isShowingPass ? 'SHOW' : 'HIDE'}</Text>
+                  <MaterialCommunityIcons
+                    name={isShowingPass ? 'eye-off-outline' : 'eye-outline'}
+                    size={22}
+                    color="#64748B"
+                  />
                 </TouchableOpacity>
               </View>
             </View>

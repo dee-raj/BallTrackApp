@@ -5,8 +5,20 @@ export const login = async (email, password) => {
   return response.data;
 };
 
-export const register = async (email, password, fullName) => {
-  const response = await apiClient.post('/auth/register', { email, password, fullName });
+/**
+ * Register a new admin and their organization (creates a Tenant on the backend).
+ * @param {string} email
+ * @param {string} password
+ * @param {string} fullName
+ * @param {string} orgName - Becomes the Tenant name
+ */
+export const register = async (email, password, fullName, orgName) => {
+  const response = await apiClient.post('/auth/register', {
+    email,
+    password,
+    fullName,
+    orgName,
+  });
   return response.data;
 };
 
