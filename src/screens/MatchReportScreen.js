@@ -11,15 +11,15 @@ const { width } = Dimensions.get('window');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const WICKET_LABEL = {
-  bowled:            'b',
-  caught:            'c &b',
-  lbw:               'lbw',
-  run_out:           'run out',
-  stumped:           'st',
-  hit_wicket:        'hit wkt',
-  handled_ball:      'handled ball',
+  bowled: 'b',
+  caught: 'c &b',
+  lbw: 'lbw',
+  run_out: 'run out',
+  stumped: 'st',
+  hit_wicket: 'hit wkt',
+  handled_ball: 'handled ball',
   obstructing_field: 'obstr. field',
-  timed_out:         'timed out',
+  timed_out: 'timed out',
 };
 
 function dismissalText(b) {
@@ -106,20 +106,20 @@ function BowlingScorecard({ scorecard, teamName }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function MatchReportScreen({ route }) {
-  const { matchId }   = route.params;
-  const [loading, setLoading]     = useState(true);
-  const [innings1, setInnings1]   = useState(null);
-  const [innings2, setInnings2]   = useState(null);
-  const [perfData, setPerfData]   = useState(null);
+  const { matchId } = route.params;
+  const [loading, setLoading] = useState(true);
+  const [innings1, setInnings1] = useState(null);
+  const [innings2, setInnings2] = useState(null);
+  const [perfData, setPerfData] = useState(null);
   const [expandedSections, setExpandedSections] = useState({
     batting_1: true, bowling_1: true, overs_1: false,
     batting_2: true, bowling_2: true, overs_2: false,
   });
   const [expandedOvers, setExpandedOvers] = useState({});
 
-  useEffect(() => { 
-    loadReport(); 
-    
+  useEffect(() => {
+    loadReport();
+
     // Realtime setup
     connectSocket();
     joinMatchRoom(matchId);
@@ -161,16 +161,16 @@ export default function MatchReportScreen({ route }) {
       ]);
       setInnings1(data1);
       setPerfData(perf);
-      try { 
-        setInnings2(await getInningsScoreboard(matchId, 2)); 
-      } catch (_) {}
+      try {
+        setInnings2(await getInningsScoreboard(matchId, 2));
+      } catch (_) { }
     } catch (e) {
       console.log('Silent report load failed', e);
     }
   };
 
   const toggleSection = (k) => setExpandedSections(p => ({ ...p, [k]: !p[k] }));
-  const toggleOver    = (inn, over) => {
+  const toggleOver = (inn, over) => {
     const key = `${inn}_${over}`;
     setExpandedOvers(p => ({ ...p, [key]: p[key] === undefined ? false : !p[key] }));
   };
@@ -191,24 +191,24 @@ export default function MatchReportScreen({ route }) {
       return acc;
     }, {});
     const sortedOvers = Object.keys(grouped).sort((a, b) => parseInt(a) - parseInt(b));
-    const isExpanded  = expandedSections[`overs_${inningsNum}`];
+    const isExpanded = expandedSections[`overs_${inningsNum}`];
 
     return (
       <View style={styles.sectionWrapper}>
         <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(`overs_${inningsNum}`)} activeOpacity={0.7}>
           <Text style={styles.sectionTitleText}>Overs Timeline</Text>
-          <MaterialCommunityIcons 
-            name={isExpanded ? "chevron-up" : "chevron-down"} 
-            size={20} 
-            color="#94A3B8" 
+          <MaterialCommunityIcons
+            name={isExpanded ? "chevron-up" : "chevron-down"}
+            size={20}
+            color="#94A3B8"
           />
         </TouchableOpacity>
 
         {isExpanded && sortedOvers.map(overNumber => {
-          const overBalls   = grouped[overNumber];
-          const overKey     = `${inningsNum}_${overNumber}`;
-          const isOverExp   = expandedOvers[overKey] !== false;
-          const overRuns    = overBalls.reduce((s, b) => s + b.runsScored + b.extras, 0);
+          const overBalls = grouped[overNumber];
+          const overKey = `${inningsNum}_${overNumber}`;
+          const isOverExp = expandedOvers[overKey] !== false;
+          const overRuns = overBalls.reduce((s, b) => s + b.runsScored + b.extras, 0);
           const overWickets = overBalls.filter(b => b.wicketType).length;
 
           return (
@@ -224,10 +224,10 @@ export default function MatchReportScreen({ route }) {
                 <View style={styles.overStatsBadge}>
                   <Text style={styles.overStatsText}>{overRuns} Runs {overWickets > 0 ? `· ${overWickets}W` : ''}</Text>
                 </View>
-                <MaterialCommunityIcons 
-                  name={isOverExp ? "chevron-up" : "chevron-down"} 
-                  size={18} 
-                  color="#94A3B8" 
+                <MaterialCommunityIcons
+                  name={isOverExp ? "chevron-up" : "chevron-down"}
+                  size={18}
+                  color="#94A3B8"
                   style={{ marginLeft: 10 }}
                 />
               </TouchableOpacity>
@@ -235,21 +235,21 @@ export default function MatchReportScreen({ route }) {
               {isOverExp && (
                 <View style={styles.ballRow}>
                   {overBalls.map((ball, idx) => {
-                    const isWkt   = !!ball.wicketType;
+                    const isWkt = !!ball.wicketType;
                     const isExtra = ball.ballType !== 'normal';
-                    const isFour  = ball.runsScored === 4;
-                    const isSix   = ball.runsScored === 6;
+                    const isFour = ball.runsScored === 4;
+                    const isSix = ball.runsScored === 6;
                     let text = ball.runsScored.toString();
                     if (isExtra) {
-                      if (ball.ballType === 'wide')     text = 'wd';
-                      else if (ball.ballType === 'no_ball')  text = 'nb';
+                      if (ball.ballType === 'wide') text = 'wd';
+                      else if (ball.ballType === 'no_ball') text = 'nb';
                       else if (ball.ballType === 'leg_bye') text = `${ball.extras}lb`;
-                      else if (ball.ballType === 'bye')     text = `${ball.extras}b`;
+                      else if (ball.ballType === 'bye') text = `${ball.extras}b`;
                     } else if (isWkt) { text = 'W'; }
 
                     // Batsman / bowler info from included relations
                     const batsmanName = ball.batsman?.fullName || '';
-                    const bowlerName  = ball.bowler?.fullName || '';
+                    const bowlerName = ball.bowler?.fullName || '';
 
                     return (
                       <View key={ball.id || idx} style={styles.ballContainer}>
@@ -274,7 +274,7 @@ export default function MatchReportScreen({ route }) {
     if (!inn) return null;
     const inningPerf = perfData?.performances?.find(p => p.inningsNumber === inn.inningsNumber);
     const isSummaryExp = expandedSections[`batting_${inn.inningsNumber}`];
-    const isBowlExp    = expandedSections[`bowling_${inn.inningsNumber}`];
+    const isBowlExp = expandedSections[`bowling_${inn.inningsNumber}`];
 
     return (
       <View style={styles.inningsContainer}>
@@ -348,7 +348,7 @@ export default function MatchReportScreen({ route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  center:    { justifyContent: 'center', alignItems: 'center' },
+  center: { justifyContent: 'center', alignItems: 'center' },
 
   pageHeader: {
     paddingHorizontal: 22, paddingTop: 20, paddingBottom: 18,
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  pageTitle:    { fontSize: 24, fontWeight: '900', color: 'white' },
+  pageTitle: { fontSize: 24, fontWeight: '900', color: 'white' },
   pageSubtitle: { fontSize: 13, color: '#94A3B8', marginTop: 3 },
 
   inningsContainer: { padding: 16 },
@@ -370,19 +370,19 @@ const styles = StyleSheet.create({
     elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2, shadowRadius: 8,
   },
-  inningsHeaderMain:    { flexDirection: 'row', alignItems: 'center' },
+  inningsHeaderMain: { flexDirection: 'row', alignItems: 'center' },
   teamLogoSmallContainer: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  teamLogoSmall:        { width: 32, height: 32, resizeMode: 'contain' },
-  inningsTitle:         { color: 'white', fontSize: 17, fontWeight: 'bold' },
-  inningsSubtitle:      { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
-  inningsScoreBadge:    { alignItems: 'flex-end' },
-  inningsScore:         { color: '#38BDF8', fontSize: 22, fontWeight: '900' },
-  inningsOvers:         { color: 'white', fontSize: 11, opacity: 0.8 },
+  teamLogoSmall: { width: 32, height: 32, resizeMode: 'contain' },
+  inningsTitle: { color: 'white', fontSize: 17, fontWeight: 'bold' },
+  inningsSubtitle: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
+  inningsScoreBadge: { alignItems: 'flex-end' },
+  inningsScore: { color: '#38BDF8', fontSize: 22, fontWeight: '900' },
+  inningsOvers: { color: 'white', fontSize: 11, opacity: 0.8 },
 
-  pillRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  pill:     { backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center' },
-  pillLabel:{ fontSize: 10, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
-  pillValue:{ fontSize: 14, fontWeight: '900', color: '#1E293B', marginTop: 2 },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  pill: { backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center' },
+  pillLabel: { fontSize: 10, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
+  pillValue: { fontSize: 14, fontWeight: '900', color: '#1E293B', marginTop: 2 },
 
   sectionCollapseHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -391,25 +391,25 @@ const styles = StyleSheet.create({
   },
 
   // ── Scorecard table ─────────────────────────────────────────────────────
-  scorecardCard:  { backgroundColor: 'white', borderRadius: 18, marginBottom: 18, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6 },
-  scorecardHeader:{ backgroundColor: '#1E3A5F', paddingVertical: 12, paddingHorizontal: 16 },
-  scorecardTeam:  { color: 'white', fontSize: 14, fontWeight: '900', letterSpacing: 0.3 },
+  scorecardCard: { backgroundColor: 'white', borderRadius: 18, marginBottom: 18, overflow: 'hidden', elevation: 3, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6 },
+  scorecardHeader: { backgroundColor: '#1E3A5F', paddingVertical: 12, paddingHorizontal: 16 },
+  scorecardTeam: { color: 'white', fontSize: 14, fontWeight: '900', letterSpacing: 0.3 },
 
-  scRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
+  scRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
   scHeaderRow: { backgroundColor: '#F1F5F9' },
-  scRowAlt:    { backgroundColor: '#FAFAFA' },
-  scCell:      { flex: 1 },
-  scPlayerCell:{ flex: 3, paddingRight: 6 },
-  scCellNum:   { width: 36, textAlign: 'center', fontSize: 13, fontWeight: '700', color: '#334155' },
-  scHeaderText:{ fontSize: 11, fontWeight: '900', color: '#64748B', textTransform: 'uppercase' },
-  scPlayerName:{ fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  scRowAlt: { backgroundColor: '#FAFAFA' },
+  scCell: { flex: 1 },
+  scPlayerCell: { flex: 3, paddingRight: 6 },
+  scCellNum: { width: 36, textAlign: 'center', fontSize: 13, fontWeight: '700', color: '#334155' },
+  scHeaderText: { fontSize: 11, fontWeight: '900', color: '#64748B', textTransform: 'uppercase' },
+  scPlayerName: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
   scDismissal: { fontSize: 10, color: '#94A3B8', fontWeight: '500', marginTop: 2 },
   scHighlight: { color: '#EF4444', fontWeight: '900' },
 
   // ── Overs Timeline ──────────────────────────────────────────────────────
-  sectionWrapper:  { marginBottom: 16 },
-  sectionHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', marginBottom: 10 },
-  sectionTitleText:{ fontSize: 13, fontWeight: '900', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionWrapper: { marginBottom: 16 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', marginBottom: 10 },
+  sectionTitleText: { fontSize: 13, fontWeight: '900', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 },
   expandIconSmall: { fontSize: 14, color: '#94A3B8' },
 
   overCard: {
@@ -418,22 +418,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05, shadowRadius: 3, borderLeftWidth: 4, borderLeftColor: '#E2E8F0',
   },
   overHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 8 },
-  overTitle:  { fontSize: 11, fontWeight: '900', color: '#64748B', letterSpacing: 1 },
-  overStatsBadge:{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  overTitle: { fontSize: 11, fontWeight: '900', color: '#64748B', letterSpacing: 1 },
+  overStatsBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   overStatsText: { fontSize: 11, fontWeight: 'bold', color: '#475569' },
 
-  ballRow:      { flexDirection: 'row', flexWrap: 'wrap' },
-  ballContainer:{ alignItems: 'center', marginHorizontal: 3, marginBottom: 8, width: 38 },
-  ballCircle:   { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 3, borderWidth: 1, borderColor: '#E2E8F0' },
-  ballText:     { fontSize: 13, fontWeight: '800', color: '#1E293B' },
-  ballMeta:     { fontSize: 8, fontWeight: '600', color: '#94A3B8', textAlign: 'center', maxWidth: 36 },
+  ballRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  ballContainer: { alignItems: 'center', marginHorizontal: 3, marginBottom: 8, width: 38 },
+  ballCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 3, borderWidth: 1, borderColor: '#E2E8F0' },
+  ballText: { fontSize: 13, fontWeight: '800', color: '#1E293B' },
+  ballMeta: { fontSize: 8, fontWeight: '600', color: '#94A3B8', textAlign: 'center', maxWidth: 36 },
 
-  wktCircle:  { backgroundColor: '#EF4444', borderColor: '#EF4444' },
-  wktText:    { color: 'white' },
-  extraCircle:{ backgroundColor: '#F3D46D', borderColor: '#F3D46D' },
-  extraText:  { color: '#000' },
+  wktCircle: { backgroundColor: '#EF4444', borderColor: '#EF4444' },
+  wktText: { color: 'white' },
+  extraCircle: { backgroundColor: '#F3D46D', borderColor: '#F3D46D' },
+  extraText: { color: '#000' },
   fourCircle: { backgroundColor: '#C03095', borderColor: '#C03095' },
-  fourText:   { color: 'white' },
-  sixCircle:  { backgroundColor: '#66B342', borderColor: '#66B342' },
-  sixText:    { color: 'white' },
+  fourText: { color: 'white' },
+  sixCircle: { backgroundColor: '#66B342', borderColor: '#66B342' },
+  sixText: { color: 'white' },
 });

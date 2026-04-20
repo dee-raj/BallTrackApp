@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   premiumHeader: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingTop: Platform.OS === 'ios' ? 60 : 30,
     paddingBottom: 20,
     paddingHorizontal: horizontalPadding,
     backgroundColor: 'white',

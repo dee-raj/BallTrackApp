@@ -11,6 +11,7 @@ import {
   Linking
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const FAQ_DATA = [
   {
@@ -136,6 +137,30 @@ export default function HelpSupportScreen({ navigation }) {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* User Guide Banner */}
+        <TouchableOpacity
+          style={styles.guideBanner}
+          onPress={() => navigation.navigate('UserGuide')}
+          activeOpacity={0.9}
+        >
+          <LinearGradient
+            colors={['#1E293B', '#334155']}
+            style={styles.bannerGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.bannerInfo}>
+              <Text style={styles.bannerTitle}>App User Guide</Text>
+              <Text style={styles.bannerSub}>Master Admin, Scorer & Audience roles</Text>
+              <View style={styles.bannerBadge}>
+                <Text style={styles.bannerBadgeText}>View Tutorial</Text>
+                <MaterialCommunityIcons name="arrow-right" size={14} color="#3B82F6" />
+              </View>
+            </View>
+            <MaterialCommunityIcons name="book-open-page-variant" size={60} color="rgba(255,255,255,0.1)" style={styles.bannerIcon} />
+          </LinearGradient>
+        </TouchableOpacity>
+
         {/* Categories */}
         <Text style={styles.sectionTitle}>Categories</Text>
         <View style={styles.categoriesGrid}>
@@ -226,7 +251,7 @@ export default function HelpSupportScreen({ navigation }) {
         <View style={styles.footer}>
           <Text style={styles.footerText}>BallTrack Support Center</Text>
           <Text style={styles.footerDev}>Developed by Dhurbaraj Joshi</Text>
-          <Text style={styles.footerSub}>Version 1.0.0</Text>
+          <Text style={styles.footerSub}>Version 1.0.1</Text>
         </View>
       </ScrollView>
     </View>
@@ -239,7 +264,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
     backgroundColor: '#bcdeffff',
@@ -410,13 +435,15 @@ const styles = StyleSheet.create({
   footerDev: {
     fontSize: 12,
     color: '#CBD5E1',
-    marginVertical: 10,
+    marginVertical: 6,
+    textDecorationLine: 'underline',
+    textDecorationColor: '#027007ff',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'monospace',
   },
   footerSub: {
     fontSize: 12,
     color: '#CBD5E1',
-    marginTop: 4,
+    textDecorationLine: 'underline',
   },
   viewMoreBtn: {
     flexDirection: 'row',
@@ -438,5 +465,56 @@ const styles = StyleSheet.create({
   },
   clearBtn: {
     padding: 5,
+  },
+  guideBanner: {
+    marginBottom: 25,
+    borderRadius: 24,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+  },
+  bannerGradient: {
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  bannerInfo: {
+    flex: 1,
+    zIndex: 1,
+  },
+  bannerTitle: {
+    color: 'white',
+    fontSize: 22,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  bannerSub: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginBottom: 16,
+    fontWeight: '600',
+  },
+  bannerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  bannerBadgeText: {
+    color: '#3B82F6',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  bannerIcon: {
+    position: 'absolute',
+    right: -10,
+    bottom: -10,
   },
 });

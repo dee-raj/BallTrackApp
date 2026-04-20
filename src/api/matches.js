@@ -50,6 +50,11 @@ export const deleteMatch = async (matchId) => {
   return response.data;
 };
 
+export const updateMatch = async (matchId, matchData) => {
+  const response = await apiClient.patch(`/matches/${matchId}`, matchData);
+  return response.data;
+};
+
 export const getMatchPerformance = async (matchId) => {
   const response = await apiClient.get(`/matches/${matchId}/performance`);
   return response.data;

@@ -16,6 +16,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { resetPassword } from '../api/auth';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
 export default function ResetPasswordScreen({ navigation, route }) {
   const { email } = route.params || {};
@@ -27,30 +28,27 @@ export default function ResetPasswordScreen({ navigation, route }) {
 
   const handleResetPassword = async () => {
     if (!otp || !newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please fill all fields');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please fill all fields' });
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Passwords do not match' });
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Password must be at least 6 characters' });
       return;
     }
 
     setIsLoading(true);
     try {
       await resetPassword(otp, newPassword);
-      Alert.alert(
-        'Success',
-        'Your password has been reset successfully!',
-        [{ text: 'Login Now', onPress: () => navigation.navigate('Login') }]
-      );
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Your password has been reset successfully!' });
+      setTimeout(() => navigation.navigate('Login'), 1500);
     } catch (error) {
-      Alert.alert('Error', error?.response?.data?.message || 'Invalid or expired reset code');
+      Toast.show({ type: 'error', text1: 'Error', text2: error?.response?.data?.message || 'Invalid or expired reset code' });
     } finally {
       setIsLoading(false);
     }

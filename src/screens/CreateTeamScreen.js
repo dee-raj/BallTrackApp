@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image, ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import ActionSheet from '../components/ActionSheet';
 import * as ImagePicker from 'expo-image-picker';
 import { createTeam } from '../api/teams';
 import { uploadImage } from '../api/uploads';
@@ -11,53 +13,46 @@ export default function CreateTeamScreen({ navigation }) {
   const [homeGround, setHomeGround] = useState('');
   const [loading, setLoading] = useState(false);
   const [logo, setLogo] = useState(null);
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
 
-  const handleLogoUpload = async () => {
-    Alert.alert(
-      'Upload Logo',
-      'Choose a logo source',
-      [
-        {
-          text: 'Camera',
-          onPress: async () => {
-            const permission = await ImagePicker.requestCameraPermissionsAsync();
-            if (!permission.granted) {
-              Alert.alert('Permission Denied', 'We need camera access to take photos.');
-              return;
-            }
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
-            });
-            if (!result.canceled) setLogo(result.assets[0].uri);
-          }
-        },
-        {
-          text: 'Library',
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
-            });
-            if (!result.canceled) setLogo(result.assets[0].uri);
-          }
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
+  const handleCamera = async () => {
+    setActionSheetVisible(false);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'We need camera access to take photos.' });
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) setLogo(result.assets[0].uri);
+  };
+
+  const handleLibrary = async () => {
+    setActionSheetVisible(false);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) setLogo(result.assets[0].uri);
+  };
+
+  const handleLogoUpload = () => {
+    setActionSheetVisible(true);
   };
 
   const handleCreate = async () => {
     if (!name.trim()) {
-      Alert.alert('Error', 'Team name is required');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Team name is required' });
       return;
     }
     if (!logo) {
-      Alert.alert('Error', 'Team logo is required for branding.');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Team logo is required for branding.' });
       return;
     }
     try {
@@ -72,7 +67,7 @@ export default function CreateTeamScreen({ navigation }) {
           finalLogoUrl = uploadResult.url;
         } catch (uploadErr) {
           console.log('Logo upload failed', uploadErr);
-          Alert.alert('Upload Failed', 'Could not upload team logo. Please try again.');
+          Toast.show({ type: 'error', text1: 'Upload Failed', text2: 'Could not upload team logo. Please try again.' });
           setLoading(false);
           return;
         }
@@ -84,11 +79,10 @@ export default function CreateTeamScreen({ navigation }) {
         homeGround: homeGround || undefined,
         logoUrl: finalLogoUrl,
       });
-      Alert.alert('Success', 'New team created successfully!', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      Toast.show({ type: 'success', text1: 'Success', text2: 'New team created successfully!' });
+      setTimeout(() => navigation.goBack(), 1500);
     } catch (e) {
-      Alert.alert('Error', e?.response?.data?.message || 'Could not create team');
+      Toast.show({ type: 'error', text1: 'Error', text2: e?.response?.data?.message || 'Could not create team' });
     } finally {
       setLoading(false);
     }
@@ -100,13 +94,13 @@ export default function CreateTeamScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={{ flex: 1 }}>
-          <View style={styles.header}>
-            <Text style={styles.title}>New Team Registry</Text>
-            <Text style={styles.subtitle}>Define your team's identity</Text>
-          </View>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={{ flex: 1 }}>
+            <View style={styles.header}>
+              <Text style={styles.title}>New Team Registry</Text>
+              <Text style={styles.subtitle}>Define your team's identity</Text>
+            </View>
 
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Identity & Branding</Text>
 
@@ -179,8 +173,17 @@ export default function CreateTeamScreen({ navigation }) {
                 )}
               </View>
             </TouchableOpacity>
-          </ScrollView>
-        </View>
+            <ActionSheet
+              visible={actionSheetVisible}
+              title="Choose a logo source"
+              options={[
+                { text: 'Camera', onPress: handleCamera, icon: 'camera' },
+                { text: 'Library', onPress: handleLibrary, icon: 'image-multiple' }
+              ]}
+              onCancel={() => setActionSheetVisible(false)}
+            />
+          </View>
+        </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );

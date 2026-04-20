@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getTeams } from '../api/teams';
 import { createTournament, addTeamsToTournament } from '../api/tournaments';
 import { AuthContext } from '../context/AuthContext';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 
@@ -26,7 +27,11 @@ export default function CreateTournamentScreen({ navigation }) {
       const data = await getTeams();
       setTeams(data);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load teams');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load teams'
+      })
     }
   };
 
@@ -40,12 +45,20 @@ export default function CreateTournamentScreen({ navigation }) {
 
   const handleCreate = async () => {
     if (isGuest) {
-      Alert.alert('Guest Mode', 'You are in guest mode. Please login to create a tournament.');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'You are in guest mode. Please login to create a tournament.'
+      })
       navigation.replace('Login');
       return;
     }
     if (!name.trim()) {
-      Alert.alert('Error', 'Please enter a tournament name');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please enter a tournament name'
+      })
       return;
     }
 
@@ -62,11 +75,18 @@ export default function CreateTournamentScreen({ navigation }) {
         await addTeamsToTournament(tournament.id, selectedTeamIds);
       }
 
-      Alert.alert('Success', 'Tournament Created!', [
-        { text: 'OK', onPress: () => navigation.replace('TournamentDetails', { tournamentId: tournament.id, tournamentName: tournament.name }) }
-      ]);
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Tournament Created!'
+      })
+      navigation.replace('TournamentDetails', { tournamentId: tournament.id, tournamentName: tournament.name });
     } catch (e) {
-      Alert.alert('Error', e?.response?.data?.message || 'Could not create tournament');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: e?.response?.data?.message || 'Could not create tournament'
+      })
     } finally {
       setLoading(false);
     }

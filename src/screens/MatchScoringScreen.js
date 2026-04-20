@@ -9,6 +9,8 @@ import { getMatchScoreboard, recordBall, undoBall, declareInnings, getMatchPerfo
 import { getTeamPlayers } from '../api/players';
 import { socket, connectSocket, disconnectSocket, joinMatchRoom, leaveMatchRoom } from '../api/socket';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import ActionSheet from '../components/ActionSheet';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 
@@ -56,6 +58,10 @@ export default function MatchScoringScreen({ route, navigation }) {
   const [selectedFielderId, setSelectedFielderId] = useState(null);
   const [showFielderPicker, setShowFielderPicker] = useState(false);
 
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionSheetTitle, setActionSheetTitle] = useState('');
+  const [actionSheetOptions, setActionSheetOptions] = useState([]);
+
   useEffect(() => {
     loadData();
 
@@ -98,7 +104,12 @@ export default function MatchScoringScreen({ route, navigation }) {
       await loadDataSilently();
     } catch (e) {
       console.log('Failed to load scoreboard', e);
-      Alert.alert('Error', 'Could not load match data');
+      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed loading scoreboard');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: message
+      })
     } finally {
       setLoading(false);
     }
@@ -169,10 +180,12 @@ export default function MatchScoringScreen({ route, navigation }) {
     if (newInnings) {
       if (newInnings.status === 'completed') {
         await refreshPerformance(data);
-        Alert.alert('Innings Completed!', 'The innings has ended.', [
-          { text: 'View Report', onPress: () => navigation.navigate('MatchReport', { matchId }) },
-          { text: 'OK' }
+        setActionSheetTitle('Innings Completed!');
+        setActionSheetOptions([
+          { text: 'View Full Match Report', icon: 'file-document-outline', onPress: () => { setActionSheetVisible(false); navigation.navigate('MatchReport', { matchId }); } },
+          { text: 'Back to Dashboard', icon: 'home-outline', onPress: () => { setActionSheetVisible(false); navigation.navigate('Dashboard'); } }
         ]);
+        setActionSheetVisible(true);
         return;
       }
 
@@ -211,9 +224,20 @@ export default function MatchScoringScreen({ route, navigation }) {
 
   // ─── Run handler ──────────────────────────────────────────────────────────
   const handleRecordRuns = async (runs) => {
-    if (!currentInnings) { Alert.alert('Error', 'No active innings'); return; }
+    if (!currentInnings) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'No active innings'
+      });
+      return;
+    }
     if (!batsmanId || !nonStrikerId || !bowlerId) {
-      Alert.alert('Missing Players', 'Please select Striker, Non-Striker, and Bowler first!');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please select Striker, Non-Striker, and Bowler first!'
+      });
       return;
     }
     try {
@@ -225,7 +249,12 @@ export default function MatchScoringScreen({ route, navigation }) {
       });
       await postBallLogic(runs, false);
     } catch (e) {
-      Alert.alert('Error recording ball', e.response?.data?.message || e.message);
+      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed recording ball');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: message
+      });
     } finally { setSubmitting(false); }
   };
 
@@ -233,7 +262,11 @@ export default function MatchScoringScreen({ route, navigation }) {
   const handleRecordExtra = async (extraType) => {
     if (!currentInnings) return;
     if (!batsmanId || !nonStrikerId || !bowlerId) {
-      Alert.alert('Missing Players', 'Please select Striker, Non-Striker, and Bowler first!');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please select Striker, Non-Striker, and Bowler first!'
+      });
       return;
     }
     try {
@@ -246,7 +279,12 @@ export default function MatchScoringScreen({ route, navigation }) {
       });
       await postBallLogic(extraType === 'wide' || extraType === 'no_ball' ? 0 : 1, false);
     } catch (e) {
-      Alert.alert('Error recording extra', e.response?.data?.message || e.message);
+      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed recording extra');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: message
+      });
     } finally { setSubmitting(false); }
   };
 
@@ -254,7 +292,11 @@ export default function MatchScoringScreen({ route, navigation }) {
   const handleWicketPress = () => {
     if (!currentInnings) return;
     if (!batsmanId || !nonStrikerId || !bowlerId) {
-      Alert.alert('Missing Players', 'Please select Striker, Non-Striker, and Bowler first!');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please select Striker, Non-Striker, and Bowler first!'
+      });
       return;
     }
     setSelectedWicketType(null);
@@ -264,11 +306,19 @@ export default function MatchScoringScreen({ route, navigation }) {
 
   const handleConfirmWicket = async () => {
     if (!selectedWicketType) {
-      Alert.alert('Select Wicket Type', 'Please choose how the batsman was dismissed.');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please choose how the batsman was dismissed.'
+      });
       return;
     }
     if (FIELDER_NEEDED.includes(selectedWicketType) && !selectedFielderId) {
-      Alert.alert('Select Fielder', 'Please choose the fielder involved.');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please choose the fielder involved.'
+      });
       return;
     }
     setShowWicketModal(false);
@@ -284,7 +334,12 @@ export default function MatchScoringScreen({ route, navigation }) {
       });
       await postBallLogic(0, true);
     } catch (e) {
-      Alert.alert('Error recording wicket', e.response?.data?.message || e.message);
+      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed recording wicket');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: message
+      });
     } finally { setSubmitting(false); }
   };
 
@@ -296,25 +351,41 @@ export default function MatchScoringScreen({ route, navigation }) {
       await undoBall(matchId);
       await loadData();
     } catch (e) {
-      Alert.alert('Undo Failed', e.response?.data?.message || e.message);
+      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed undoing ball');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: message
+      });
     } finally { setSubmitting(false); }
   };
 
   // ─── Declare ─────────────────────────────────────────────────────────────
   const handleDeclare = () => {
     if (!currentInnings) return;
-    Alert.alert('Declare Innings', 'Are you sure you want to end this innings manually?', [
-      { text: 'Cancel', style: 'cancel' },
+    setActionSheetTitle('Are you sure you want to declare this innings?');
+    setActionSheetOptions([
       {
-        text: 'Yes, Declare',
+        text: 'Yes, Declare Innings',
+        destructive: true,
+        icon: 'flag-variant-outline',
         onPress: async () => {
+          setActionSheetVisible(false);
           try {
             await declareInnings(currentInnings.id);
             loadData();
-          } catch (e) { Alert.alert('Error', 'Failed to declare innings'); }
+          } catch (e) {
+            const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed declaring innings');
+            Toast.show({
+              type: 'error',
+              text1: 'Error',
+              text2: message
+            });
+          }
         }
       }
     ]);
+    setActionSheetVisible(true);
   };
 
   // ─── Player selection modal ───────────────────────────────────────────────
@@ -761,6 +832,13 @@ export default function MatchScoringScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        title={actionSheetTitle}
+        options={actionSheetOptions}
+        onCancel={() => setActionSheetVisible(false)}
+      />
     </View>
   );
 }

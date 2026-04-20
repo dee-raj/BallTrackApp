@@ -46,9 +46,9 @@ export default function TournamentDetailsScreen({ route, navigation }) {
           </View>
         </View>
         <View style={styles.teamCol}>
-          <Image 
-            source={{ uri: item.teamLogo || 'https://via.placeholder.com/40' }} 
-            style={styles.teamLogoSmall} 
+          <Image
+            source={{ uri: item.teamLogo || 'https://via.placeholder.com/40' }}
+            style={styles.teamLogoSmall}
           />
           <Text style={styles.teamNameStandings} numberOfLines={1}>{item.teamName}</Text>
         </View>
@@ -64,16 +64,16 @@ export default function TournamentDetailsScreen({ route, navigation }) {
   const renderMatchItem = ({ item }) => {
     const matchDate = new Date(item.matchDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const isCompleted = item.matchStatus === 'completed';
-    
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.matchCard}
         onPress={() => navigation.navigate('MatchDetails', { matchId: item.id })}
       >
         <View style={styles.matchHeader}>
           <View style={styles.dateBadge}>
-              <MaterialCommunityIcons name="calendar" size={12} color="#94A3B8" />
-              <Text style={styles.matchDate}>{matchDate}</Text>
+            <MaterialCommunityIcons name="calendar" size={12} color="#94A3B8" />
+            <Text style={styles.matchDate}>{matchDate}</Text>
           </View>
           <View style={[styles.statusBadge, isCompleted ? styles.statusCompleted : styles.statusLive]}>
             <Text style={[styles.statusText, isCompleted ? styles.textCompleted : styles.textLive]}>
@@ -81,16 +81,16 @@ export default function TournamentDetailsScreen({ route, navigation }) {
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.matchTeamsRow}>
           <View style={styles.teamDetail}>
-             <Text style={styles.matchTeamName} numberOfLines={1}>{item.homeTeam.name}</Text>
+            <Text style={styles.matchTeamName} numberOfLines={1}>{item.homeTeam.name}</Text>
           </View>
           <View style={styles.vsCircle}>
-             <Text style={styles.vsText}>VS</Text>
+            <Text style={styles.vsText}>VS</Text>
           </View>
           <View style={styles.teamDetail}>
-             <Text style={styles.matchTeamName} numberOfLines={1}>{item.awayTeam.name}</Text>
+            <Text style={styles.matchTeamName} numberOfLines={1}>{item.awayTeam.name}</Text>
           </View>
         </View>
 
@@ -130,14 +130,14 @@ export default function TournamentDetailsScreen({ route, navigation }) {
 
       <View style={styles.tabContainer}>
         <View style={styles.tabBar}>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'standings' && styles.activeTab]} 
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'standings' && styles.activeTab]}
             onPress={() => setActiveTab('standings')}
           >
             <Text style={[styles.tabText, activeTab === 'standings' && styles.activeTabText]}>Standings</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'matches' && styles.activeTab]} 
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'matches' && styles.activeTab]}
             onPress={() => setActiveTab('matches')}
           >
             <Text style={[styles.tabText, activeTab === 'matches' && styles.activeTabText]}>Fixtures</Text>
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
   statsHeaderRow: { flexDirection: 'row' },
   statColHeader: { width: 35, textAlign: 'center', fontSize: 10, fontWeight: '900', color: '#94A3B8' },
   ptsHeader: { color: '#1E293B' },
-  
+
   standingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -320,15 +320,15 @@ const styles = StyleSheet.create({
   rankBadgeTop: { backgroundColor: '#1E293B' },
   rankText: { fontSize: 11, fontWeight: '800', color: '#64748B' },
   rankTextTop: { color: 'white' },
-  
+
   teamCol: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   teamLogoSmall: { width: 32, height: 32, borderRadius: 8, marginRight: 10 },
   teamNameStandings: { fontSize: 14, fontWeight: '800', color: '#1E293B' },
-  
+
   statsRow: { flexDirection: 'row' },
   statCol: { width: 35, textAlign: 'center', fontSize: 13, fontWeight: '700', color: '#64748B' },
   ptsText: { color: '#1E293B', fontWeight: '900' },
-  
+
   matchList: { padding: horizontalPadding, paddingTop: 10 },
   matchCard: {
     backgroundColor: 'white',
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 9, fontWeight: '900' },
   textCompleted: { color: '#16A34A' },
   textLive: { color: '#EF4444' },
-  
+
   matchTeamsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   matchTeamName: { fontSize: 15, fontWeight: '800', color: '#1E293B' },
   vsCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginHorizontal: 15 },
   vsText: { fontSize: 8, fontWeight: '900', color: '#94A3B8' },
-  
+
   resultContainer: {
     marginTop: 15,
     flexDirection: 'row',
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resultText: { fontSize: 12, fontWeight: '800', color: '#16A34A' },
-  
+
   emptyState: { padding: 40, alignItems: 'center' },
   emptyStateText: { color: '#94A3B8', fontSize: 14, fontWeight: '700', marginTop: 10 }
 });

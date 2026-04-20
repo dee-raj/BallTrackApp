@@ -6,6 +6,8 @@ import { AuthContext } from '../context/AuthContext';
 import { deletePlayer, updatePlayer } from '../api/players';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../api/uploads';
+import Toast from 'react-native-toast-message';
+import ActionSheet from '../components/ActionSheet';
 
 const { width } = Dimensions.get('window');
 const horizontalPadding = width * 0.05;
@@ -80,6 +82,11 @@ export default function PlayersListScreen() {
   const [isUpdating, setIsUpdating] = useState(false);
   const { isGuest } = useContext(AuthContext);
 
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionSheetTitle, setActionSheetTitle] = useState('');
+  const [actionSheetOptions, setActionSheetOptions] = useState([]);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
   useEffect(() => {
     fetchPlayers();
   }, []);
@@ -96,33 +103,65 @@ export default function PlayersListScreen() {
     }
   }, []);
 
-  const pickEditImage = async () => {
+  const handleCamera = async () => {
+    setActionSheetVisible(false);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'We need camera access to take photos.' });
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) setNewPhotoUri(result.assets[0].uri);
+  };
+
+  const handleLibrary = async () => {
+    setActionSheetVisible(false);
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.7,
     });
-    if (!result.canceled) setNewPhotoUri(result.assets[0].uri);
+    if (!result.canceled && result.assets?.[0]?.uri) setNewPhotoUri(result.assets[0].uri);
+  };
+
+  const pickEditImage = () => {
+    setActionSheetTitle('Update Profile Photo');
+    setActionSheetOptions([
+      { text: 'Camera', icon: 'camera', onPress: handleCamera },
+      { text: 'Library', icon: 'image-multiple', onPress: handleLibrary }
+    ]);
+    setActionSheetVisible(true);
   };
 
   const handleDeletePlayer = useCallback((player) => {
-    Alert.alert('Delete Player', `Are you sure you want to delete ${player.fullName}?`, [
-      { text: 'Cancel', style: 'cancel' },
+    setActionSheetTitle(`Delete ${player.fullName}?`);
+    setActionSheetOptions([
       {
-        text: 'Delete', style: 'destructive', onPress: async () => {
+        text: 'Delete Player Permanently',
+        destructive: true,
+        icon: 'account-remove-outline',
+        onPress: async () => {
+          setActionSheetVisible(false);
           try {
             setDeletingId(player.id);
             await deletePlayer(player.id);
             fetchPlayers();
+            Toast.show({ type: 'success', text1: 'Success', text2: 'Player deleted successfully' });
           } catch (e) {
-            Alert.alert('Error', 'Failed deleting player');
+            Toast.show({ type: 'error', text1: 'Error', text2: 'Failed deleting player' });
           } finally {
             setDeletingId(null);
           }
         }
       }
     ]);
+    setActionSheetVisible(true);
   }, [fetchPlayers]);
 
   const submitUpdatePlayer = useCallback(async () => {
@@ -144,8 +183,9 @@ export default function PlayersListScreen() {
       setEditingPlayer(null);
       setNewPhotoUri(null);
       fetchPlayers();
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Player updated successfully' });
     } catch (e) {
-      Alert.alert('Error', 'Failed updating player');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed updating player' });
     } finally {
       setIsUpdating(false);
     }
@@ -211,7 +251,13 @@ export default function PlayersListScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Update Player</Text>
-              <TouchableOpacity onPress={() => { setEditingPlayer(null); setNewPhotoUri(null); }} style={styles.closeBtn}>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditingPlayer(null);
+                  setNewPhotoUri(null);
+                }}
+                style={styles.closeBtn}
+              >
                 <MaterialCommunityIcons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
@@ -292,6 +338,13 @@ export default function PlayersListScreen() {
           </View>
         </View>
       </Modal>
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        title={actionSheetTitle}
+        options={actionSheetOptions}
+        onCancel={() => setActionSheetVisible(false)}
+      />
     </View>
   );
 }

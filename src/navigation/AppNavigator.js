@@ -14,6 +14,7 @@ import TournamentDetailsScreen from '../screens/TournamentDetailsScreen';
 import CreateTournamentScreen from '../screens/CreateTournamentScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import HelpSupportScreen from '../screens/HelpSupportScreen';
+import UserGuideScreen from '../screens/UserGuideScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -94,6 +95,11 @@ export default function AppNavigator() {
       <Stack.Screen
         name="HelpSupport"
         component={HelpSupportScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="UserGuide"
+        component={UserGuideScreen}
         options={{ headerShown: false }}
       />
 

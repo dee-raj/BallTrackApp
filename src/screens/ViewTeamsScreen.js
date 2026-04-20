@@ -6,6 +6,8 @@ import { getTeams, deleteTeam, updateTeam } from '../api/teams';
 import { getTeamPlayers, removePlayerFromTeam } from '../api/players';
 import { uploadImage } from '../api/uploads';
 import { AuthContext } from '../context/AuthContext';
+import Toast from 'react-native-toast-message';
+import ActionSheet from '../components/ActionSheet';
 
 export default function ViewTeamsScreen({ navigation }) {
   const [teams, setTeams] = useState([]);
@@ -18,6 +20,10 @@ export default function ViewTeamsScreen({ navigation }) {
   const [newLogoUri, setNewLogoUri] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const { isGuest } = useContext(AuthContext);
+
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionSheetTitle, setActionSheetTitle] = useState('');
+  const [actionSheetOptions, setActionSheetOptions] = useState([]);
 
   useEffect(() => {
     loadTeams();
@@ -36,42 +42,47 @@ export default function ViewTeamsScreen({ navigation }) {
   };
 
   const pickTeamEditLogo = async () => {
-    Alert.alert(
-      'Update Logo',
-      'Choose a logo source',
-      [
-        {
-          text: 'Camera',
-          onPress: async () => {
-            const permission = await ImagePicker.requestCameraPermissionsAsync();
-            if (!permission.granted) {
-              Alert.alert('Permission Denied', 'We need camera access to take photos.');
-              return;
-            }
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
+    setActionSheetTitle('Update Logo');
+    setActionSheetOptions([
+      {
+        text: 'Camera',
+        icon: 'camera',
+        onPress: async () => {
+          setActionSheetVisible(false);
+          const permission = await ImagePicker.requestCameraPermissionsAsync();
+          if (!permission.granted) {
+            Toast.show({
+              type: 'info',
+              text1: 'Error',
+              text2: 'We need camera access to take photos.'
             });
-            if (!result.canceled) setNewLogoUri(result.assets[0].uri);
+            return;
           }
-        },
-        {
-          text: 'Library',
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
-            });
-            if (!result.canceled) setNewLogoUri(result.assets[0].uri);
-          }
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+          });
+          if (!result.canceled) setNewLogoUri(result.assets[0].uri);
+        }
+      },
+      {
+        text: 'Library',
+        icon: 'image-multiple',
+        onPress: async () => {
+          setActionSheetVisible(false);
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+          });
+          if (!result.canceled) setNewLogoUri(result.assets[0].uri);
+        }
+      }
+    ]);
+    setActionSheetVisible(true);
   };
 
   const handleSelectTeam = async (team) => {
@@ -98,45 +109,59 @@ export default function ViewTeamsScreen({ navigation }) {
   }
 
   const handleDeleteTeam = (team) => {
-    Alert.alert('Delete Team', `Are you sure you want to delete ${team.name}? This will remove all associated roster data.`, [
-      { text: 'Cancel', style: 'cancel' },
+    setActionSheetTitle(`Delete ${team.name}?`);
+    setActionSheetOptions([
       {
-        text: 'Delete', style: 'destructive', onPress: async () => {
+        text: 'Delete Team Permanently',
+        destructive: true,
+        icon: 'trash-can-outline',
+        onPress: async () => {
+          setActionSheetVisible(false);
           try {
             setDeletingId(team.id);
             await deleteTeam(team.id);
             if (selectedTeam?.id === team.id) setSelectedTeam(null);
             loadTeams();
           } catch (e) {
-            Alert.alert('Error', e?.response?.data?.message || 'Failed deleting team');
+            const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed deleting team');
+            Toast.show({
+              type: 'error',
+              text1: 'Error',
+              text2: message
+            });
           } finally {
             setDeletingId(null);
           }
         }
       }
     ]);
+    setActionSheetVisible(true);
   };
 
   const handleRemovePlayerFromTeam = (tp) => {
-    Alert.alert(
-      'Remove Player',
-      `Are you sure you want to remove ${tp.player?.fullName} from ${selectedTeam.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await removePlayerFromTeam(selectedTeam.id, tp.playerId);
-              refreshTeamPlayers(selectedTeam.id);
-            } catch (e) {
-              Alert.alert('Error', e?.response?.data?.message || 'Failed removing player');
-            }
+    setActionSheetTitle(`Remove ${tp.player?.fullName}?`);
+    setActionSheetOptions([
+      {
+        text: 'Remove Player from Roster',
+        destructive: true,
+        icon: 'account-remove-outline',
+        onPress: async () => {
+          setActionSheetVisible(false);
+          try {
+            await removePlayerFromTeam(selectedTeam.id, tp.playerId);
+            refreshTeamPlayers(selectedTeam.id);
+          } catch (e) {
+            const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed removing player');
+            Toast.show({
+              type: 'error',
+              text1: 'Error',
+              text2: message
+            });
           }
         }
-      ]
-    );
+      }
+    ]);
+    setActionSheetVisible(true);
   };
 
   const submitUpdateTeam = async () => {
@@ -151,7 +176,11 @@ export default function ViewTeamsScreen({ navigation }) {
           logoUrl = uploadResult.url;
         } catch (uploadErr) {
           console.log('Update logo failed', uploadErr);
-          Alert.alert('Update Failed', 'Could not upload new team logo.');
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Could not upload new team logo.'
+          });
           setIsUpdating(false);
           return;
         }
@@ -167,7 +196,12 @@ export default function ViewTeamsScreen({ navigation }) {
       setNewLogoUri(null);
       loadTeams();
     } catch (e) {
-      Alert.alert('Error', e?.response?.data?.message || 'Failed updating team');
+      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed updating team');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: message
+      });
     } finally {
       setIsUpdating(false);
     }
@@ -353,6 +387,13 @@ export default function ViewTeamsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        title={actionSheetTitle}
+        options={actionSheetOptions}
+        onCancel={() => setActionSheetVisible(false)}
+      />
 
     </View>
   );

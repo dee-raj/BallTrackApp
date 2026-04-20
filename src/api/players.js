@@ -6,6 +6,7 @@ export const getPlayers = async () => {
 };
 
 export const createPlayer = async (playerData) => {
+  console.log('Creating player', playerData);
   const response = await apiClient.post('/players', playerData);
   return response.data;
 };

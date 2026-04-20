@@ -18,6 +18,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { updateProfile, changePassword } from '../api/users';
 import { uploadImage } from '../api/uploads';
+import Toast from 'react-native-toast-message';
+import ActionSheet from '../components/ActionSheet';
 
 export default function ProfileScreen({ navigation }) {
   const { user, setUser, logout, isGuest } = useContext(AuthContext);
@@ -27,6 +29,11 @@ export default function ProfileScreen({ navigation }) {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [email, setEmail] = useState(user?.email || '');
+
+  // Action Sheet State
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionSheetTitle, setActionSheetTitle] = useState('');
+  const [actionSheetOptions, setActionSheetOptions] = useState([]);
 
   const openEditModal = () => {
     setFullName(user?.fullName || '');
@@ -47,7 +54,7 @@ export default function ProfileScreen({ navigation }) {
 
   const handleUpdateProfile = async () => {
     if (!fullName.trim() || !email.trim()) {
-      Alert.alert('Error', 'Full name and email are required');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Full name and email are required' });
       return;
     }
 
@@ -56,10 +63,10 @@ export default function ProfileScreen({ navigation }) {
       const updatedUser = await updateProfile({ fullName, email });
       setUser(updatedUser);
       setEditModalVisible(false);
-      Alert.alert('Success', 'Profile updated successfully');
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Profile updated successfully' });
     } catch (error) {
       console.error('Update profile error:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to update profile');
+      Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.message || 'Failed to update profile' });
     } finally {
       setLoading(false);
     }
@@ -67,17 +74,17 @@ export default function ProfileScreen({ navigation }) {
 
   const handleChangePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Error', 'All fields are required');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'All fields are required' });
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'New passwords do not match');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'New passwords do not match' });
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'New password must be at least 6 characters');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'New password must be at least 6 characters' });
       return;
     }
 
@@ -88,51 +95,77 @@ export default function ProfileScreen({ navigation }) {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      Alert.alert('Success', 'Password changed successfully');
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Password changed successfully' });
     } catch (error) {
       console.error('Change password error:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to change password');
+      Toast.show({ type: 'error', text1: 'Error', text2: error.response?.data?.message || 'Failed to change password' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleImagePick = async () => {
+  const handleCamera = async () => {
+    setActionSheetVisible(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'We need camera access to update your photo.' });
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      processImageSelection(result.assets[0].uri);
+    }
+  };
+
+  const handleLibrary = async () => {
+    setActionSheetVisible(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'We need gallery access to update your photo.' });
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      processImageSelection(result.assets[0].uri);
+    }
+  };
+
+  const processImageSelection = async (imageUri) => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Sorry, we need camera roll permissions to make this work!');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.5,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setLoading(true);
-        const imageUri = result.assets[0].uri;
-        console.log('Selected image URI:', imageUri);
-
-        try {
-          const uploadResult = await uploadImage(imageUri);
-          const updatedUser = await updateProfile({ photoUrl: uploadResult.url });
-          setUser(updatedUser);
-          // Alert.alert('Success', 'Profile photo updated successfully');
-        } catch (err) {
-          console.error('Upload failed:', err);
-          Alert.alert('Upload Error', err.response?.data?.message || 'Failed to upload image. Please try again.');
-        }
-      }
-    } catch (error) {
-      console.error('Image picking error:', error);
-      Alert.alert('Error', 'Failed to update avatar');
+      setLoading(true);
+      const uploadResult = await uploadImage(imageUri);
+      const updatedUser = await updateProfile({ photoUrl: uploadResult.url });
+      setUser(updatedUser);
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Profile photo updated successfully' });
+    } catch (err) {
+      console.error('Upload failed:', err);
+      Toast.show({ type: 'error', text1: 'Upload Error', text2: 'Failed to update photo' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const openImagePicker = () => {
+    setActionSheetTitle('Update Profile Photo');
+    setActionSheetOptions([
+      { text: 'Take Photo', icon: 'camera', onPress: handleCamera },
+      { text: 'Choose from Gallery', icon: 'image-multiple', onPress: handleLibrary }
+    ]);
+    setActionSheetVisible(true);
   };
 
   return (
@@ -157,7 +190,7 @@ export default function ProfileScreen({ navigation }) {
             </View>
             <TouchableOpacity
               style={styles.editBadge}
-              onPress={handleImagePick}
+              onPress={openImagePicker}
               disabled={loading}
             >
               {loading ? (
@@ -236,50 +269,52 @@ export default function ProfileScreen({ navigation }) {
         transparent={true}
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#64748B" />
+        <TouchableWithoutFeedback onPress={() => setEditModalVisible(false)}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Edit Profile</Text>
+                <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+                  <MaterialCommunityIcons name="close" size={24} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Full Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="Enter your full name"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Email Address</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Enter your email"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleUpdateProfile}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Save Changes</Text>
+                )}
               </TouchableOpacity>
             </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="Enter your full name"
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Email Address</Text>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Enter your email"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={handleUpdateProfile}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.saveBtnText}>Save Changes</Text>
-              )}
-            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Security/Password Modal */}
@@ -289,98 +324,107 @@ export default function ProfileScreen({ navigation }) {
         transparent={true}
         onRequestClose={() => setSecurityModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Change Password</Text>
-              <TouchableOpacity onPress={() => setSecurityModalVisible(false)}>
-                <MaterialCommunityIcons name="close" size={24} color="#64748B" />
+        <TouchableWithoutFeedback onPress={() => setSecurityModalVisible(false)}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Change Password</Text>
+                <TouchableOpacity onPress={() => setSecurityModalVisible(false)}>
+                  <MaterialCommunityIcons name="close" size={24} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Current Password</Text>
+                <TextInput
+                  style={styles.input}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  placeholder="Enter current password"
+                  secureTextEntry={!isShowPassword.currentPassword}
+                />
+                {currentPassword.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.eyeToggle}
+                    onPress={() => setShowPassword({ ...isShowPassword, currentPassword: !isShowPassword.currentPassword })}
+                  >
+                    <MaterialCommunityIcons
+                      name={isShowPassword.currentPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={22}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>New Password</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="Enter new password"
+                  secureTextEntry={!isShowPassword.newPassword}
+                />
+                {newPassword.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.eyeToggle}
+                    onPress={() => setShowPassword({ ...isShowPassword, newPassword: !isShowPassword.newPassword })}
+                  >
+                    <MaterialCommunityIcons
+                      name={isShowPassword.newPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={22}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Confirm New Password</Text>
+                <TextInput
+                  style={styles.input}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm new password"
+                  secureTextEntry={!isShowPassword.confirmPassword}
+                />
+                {confirmPassword.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.eyeToggle}
+                    onPress={() => setShowPassword({ ...isShowPassword, confirmPassword: !isShowPassword.confirmPassword })}
+                  >
+                    <MaterialCommunityIcons
+                      name={isShowPassword.confirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={22}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleChangePassword}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Update Password</Text>
+                )}
               </TouchableOpacity>
             </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Current Password</Text>
-              <TextInput
-                style={styles.input}
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                placeholder="Enter current password"
-                secureTextEntry={!isShowPassword.currentPassword}
-              />
-              {currentPassword.length > 0 && (
-                <TouchableOpacity
-                  style={styles.eyeToggle}
-                  onPress={() => setShowPassword({ ...isShowPassword, currentPassword: !isShowPassword.currentPassword })}
-                >
-                  <MaterialCommunityIcons
-                    name={isShowPassword.currentPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                    color="#64748B"
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>New Password</Text>
-              <TextInput
-                style={styles.input}
-                value={newPassword}
-                onChangeText={setNewPassword}
-                placeholder="Enter new password"
-                secureTextEntry={!isShowPassword.newPassword}
-              />
-              {newPassword.length > 0 && (
-                <TouchableOpacity
-                  style={styles.eyeToggle}
-                  onPress={() => setShowPassword({ ...isShowPassword, newPassword: !isShowPassword.newPassword })}
-                >
-                  <MaterialCommunityIcons
-                    name={isShowPassword.newPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                    color="#64748B"
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Confirm New Password</Text>
-              <TextInput
-                style={styles.input}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Confirm new password"
-                secureTextEntry={!isShowPassword.confirmPassword}
-              />
-              {confirmPassword.length > 0 && (
-                <TouchableOpacity
-                  style={styles.eyeToggle}
-                  onPress={() => setShowPassword({ ...isShowPassword, confirmPassword: !isShowPassword.confirmPassword })}
-                >
-                  <MaterialCommunityIcons
-                    name={isShowPassword.confirmPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={22}
-                    color="#64748B"
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={handleChangePassword}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text style={styles.saveBtnText}>Update Password</Text>
-              )}
-            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        title={actionSheetTitle}
+        options={actionSheetOptions}
+        onCancel={() => setActionSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -391,7 +435,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 50,
+    paddingTop: Platform.OS === 'ios' ? 40 : 30,
     paddingBottom: 20,
     paddingHorizontal: 20,
     backgroundColor: '#bcdeffff',

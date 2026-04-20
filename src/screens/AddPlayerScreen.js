@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import ConfirmModal from '../components/ConfirmModal';
+import ActionSheet from '../components/ActionSheet';
 import * as ImagePicker from 'expo-image-picker';
 import { getTeams } from '../api/teams';
 import { createPlayer, addPlayerToTeam, getPlayers } from '../api/players';
@@ -22,6 +25,10 @@ export default function AddPlayerScreen({ navigation }) {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmResolver, setConfirmResolver] = useState(null);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -34,64 +41,63 @@ export default function AddPlayerScreen({ navigation }) {
       ]);
       setTeams(teamsData);
       setGlobalPlayers(playersData);
-      if (teamsData.length > 0 && !selectedTeamId) setSelectedTeamId(teamsData[0].id);
+      const allTeams = [{ id: 'global', name: 'Global Pool (No Team)', isGlobal: true }, ...teamsData];
+      setTeams(allTeams);
+      if (!selectedTeamId) setSelectedTeamId('global');
     } catch (e) {
-      Alert.alert('Error', 'Failed to load teams and players');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to load teams and players' });
     }
   };
 
-  const pickImage = async () => {
-    Alert.alert(
-      'Upload Photo',
-      'Choose a photo source',
-      [
-        {
-          text: 'Camera',
-          onPress: async () => {
-            const permission = await ImagePicker.requestCameraPermissionsAsync();
-            if (!permission.granted) {
-              Alert.alert('Permission Denied', 'We need camera access to take photos.');
-              return;
-            }
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
-            });
-            if (!result.canceled && result.assets?.[0]?.uri) setPhotoUri(result.assets[0].uri);
-          }
-        },
-        {
-          text: 'Library',
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['images'],
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.7,
-            });
-            if (!result.canceled && result.assets?.[0]?.uri) setPhotoUri(result.assets[0].uri);
-          }
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
+  const handleCamera = async () => {
+    setActionSheetVisible(false);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Toast.show({ type: 'error', text1: 'Permission Denied', text2: 'We need camera access to take photos.' });
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) setPhotoUri(result.assets[0].uri);
+  };
+
+  const handleLibrary = async () => {
+    setActionSheetVisible(false);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) setPhotoUri(result.assets[0].uri);
+  };
+
+  const pickImage = () => {
+    setActionSheetVisible(true);
   };
 
   const handleCreate = async () => {
-    if (!jerseyNumber || !selectedTeamId) {
-      Alert.alert('Error', 'Please select a team and enter a jersey number.');
+    if (selectedTeamId !== 'global' && !jerseyNumber) {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter a jersey number to link the player.' });
+      return;
+    }
+
+    if (mode === 'existing' && selectedTeamId === 'global') {
+      Toast.show({ type: 'info', text1: 'Notice', text2: 'Please select a team to link the existing player.' });
       return;
     }
 
     if (mode === 'new' && !fullName.trim()) {
-      Alert.alert('Error', 'Please enter the player name.');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter the player name.' });
       return;
     }
 
     if (mode === 'existing' && !selectedGlobalPlayerId) {
-      Alert.alert('Error', 'Please select an existing player.');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please select an existing player.' });
       return;
     }
 
@@ -111,10 +117,8 @@ export default function AddPlayerScreen({ navigation }) {
             console.log('Upload failed', uploadErr);
             // We can choose to continue or abort. Let's warn the user.
             const proceed = await new Promise(resolve => {
-              Alert.alert('Upload Failed', 'Photo could not be uploaded. Proceed without photo?', [
-                { text: 'Cancel', onPress: () => resolve(false), style: 'cancel' },
-                { text: 'Yes, Proceed', onPress: () => resolve(true) }
-              ]);
+              setConfirmResolver(() => resolve);
+              setConfirmVisible(true);
             });
             if (!proceed) {
               setLoading(false);
@@ -133,13 +137,20 @@ export default function AddPlayerScreen({ navigation }) {
         targetPlayerId = player.id;
       }
 
-      await addPlayerToTeam(selectedTeamId, targetPlayerId, jerseyNumber);
-
-      Alert.alert('Success', 'Player registered and added to team!', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      if (selectedTeamId !== 'global') {
+        await addPlayerToTeam(selectedTeamId, targetPlayerId, jerseyNumber);
+        Toast.show({ type: 'success', text1: 'Success', text2: 'Player registered and added to team!' });
+      } else {
+        Toast.show({ type: 'success', text1: 'Success', text2: 'Player registered to global pool!' });
+      }
+      setTimeout(() => navigation.goBack(), 1500);
     } catch (e) {
-      Alert.alert('Error', e?.response?.data?.message || 'Could not add player');
+      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed adding player');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: message
+      });
     } finally {
       setLoading(false);
     }
@@ -151,13 +162,13 @@ export default function AddPlayerScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={{ flex: 1, paddingBottom: 62 }}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Player Registration</Text>
-            <Text style={styles.subtitle}>Link a player to a team squad</Text>
-          </View>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={{ flex: 1, paddingBottom: 12 }}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Player Registration</Text>
+              <Text style={styles.subtitle}>Link a player to a team squad</Text>
+            </View>
 
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             <View style={styles.tabContainer}>
               <TouchableOpacity style={[styles.tab, mode === 'new' && styles.tabActive]} onPress={() => setMode('new')}>
                 <Text style={[styles.tabText, mode === 'new' && styles.tabTextActive]}>Brand New</Text>
@@ -279,7 +290,11 @@ export default function AddPlayerScreen({ navigation }) {
                     onPress={() => setSelectedTeamId(t.id)}
                   >
                     <View style={styles.teamLogoContainer}>
-                      <Image source={{ uri: t.logoUrl || 'https://via.placeholder.com/50' }} style={styles.teamLogo} />
+                      {t.isGlobal ? (
+                        <MaterialCommunityIcons name="earth" size={24} color="#94A3B8" style={styles.teamLogo} />
+                      ) : (
+                        <Image source={{ uri: t.logoUrl || 'https://via.placeholder.com/50' }} style={styles.teamLogo} />
+                      )}
                     </View>
                     <Text style={[styles.teamCardName, selectedTeamId === t.id && styles.teamCardNameActive]} numberOfLines={1}>{t.name}</Text>
                     {selectedTeamId === t.id && (
@@ -299,8 +314,33 @@ export default function AddPlayerScreen({ navigation }) {
                 )}
               </View>
             </TouchableOpacity>
-          </ScrollView>
-        </View>
+            <ActionSheet
+              visible={actionSheetVisible}
+              title="Choose a photo source"
+              options={[
+                { text: 'Camera', onPress: handleCamera, icon: 'camera' },
+                { text: 'Library', onPress: handleLibrary, icon: 'image-multiple' }
+              ]}
+              onCancel={() => setActionSheetVisible(false)}
+            />
+            <ConfirmModal
+              visible={confirmVisible}
+              title="Upload Failed"
+              type="danger"
+              message="Photo could not be uploaded. Proceed without photo?"
+              confirmText="Yes, Proceed"
+              cancelText="Cancel"
+              onCancel={() => {
+                setConfirmVisible(false);
+                if (confirmResolver) confirmResolver(false);
+              }}
+              onConfirm={() => {
+                setConfirmVisible(false);
+                if (confirmResolver) confirmResolver(true);
+              }}
+            />
+          </View>
+        </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );

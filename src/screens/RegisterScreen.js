@@ -9,6 +9,7 @@ import { AuthContext } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { register as apiRegister } from '../api/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
 
 const { width, height } = Dimensions.get('window');
 
@@ -23,18 +24,18 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     if (!fullName || !orgName || !email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please fill in all fields' });
       return;
     }
 
     const isValidEmail = (email) => /\S+@\S+\.\S+/.test(email);
     if (!isValidEmail(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email');
+      Toast.show({ type: 'error', text1: 'Invalid Email', text2: 'Please enter a valid email' });
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Weak Password', 'Password must be at least 6 characters');
+      Toast.show({ type: 'error', text1: 'Weak Password', text2: 'Password must be at least 6 characters' });
       return;
     }
 
@@ -46,7 +47,7 @@ export default function RegisterScreen({ navigation }) {
       setUser(data.user);
       // Auth flow will naturally load Dashboard since User state is set.
     } catch (error) {
-      Alert.alert('Registration failed', error?.response?.data?.message || 'Check your internet connection and try again.');
+      Toast.show({ type: 'error', text1: 'Registration failed', text2: error?.response?.data?.message || 'Check your internet connection and try again.' });
     } finally {
       setIsLoading(false);
     }

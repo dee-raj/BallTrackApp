@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import { AuthContext, AuthProvider } from './src/context/AuthContext';
+import Toast from 'react-native-toast-message';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,9 +44,12 @@ function NavigationWrapper() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NavigationWrapper />
-    </AuthProvider>
+    <>
+      <AuthProvider>
+        <NavigationWrapper />
+      </AuthProvider>
+      <Toast position='bottom' bottomOffset={20} />
+    </>
   );
 }
 

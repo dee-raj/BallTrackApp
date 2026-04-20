@@ -16,6 +16,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { forgotPassword } from '../api/auth';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -23,13 +24,13 @@ export default function ForgotPasswordScreen({ navigation }) {
 
   const handleForgotPassword = async () => {
     if (!email) {
-      Alert.alert('Error', 'Please enter your email address');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter your email address' });
       return;
     }
 
     const isValidEmail = (e) => /\S+@\S+\.\S+/.test(e);
     if (!isValidEmail(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address');
+      Toast.show({ type: 'error', text1: 'Invalid Email', text2: 'Please enter a valid email address' });
       return;
     }
 
@@ -37,15 +38,12 @@ export default function ForgotPasswordScreen({ navigation }) {
     try {
       const normalizedEmail = email.trim().toLowerCase();
       const response = await forgotPassword(normalizedEmail);
-      Alert.alert(
-        'Success',
-        response.message || 'If an account exists, a reset code has been sent.',
-        [{ text: 'OK', onPress: () => navigation.navigate('ResetPassword', { email: normalizedEmail }) }]
-      );
+      Toast.show({ type: 'success', text1: 'Success', text2: response.message || 'If an account exists, a reset code has been sent.' });
+      setTimeout(() => navigation.navigate('ResetPassword', { email: normalizedEmail }), 1500);
     } catch (error) {
       console.log('[AUTH] Forgot password error detail:', error?.response?.data || error.message);
       const errorMsg = error?.response?.data?.message || 'Something went wrong. Please check your connection.';
-      Alert.alert('Error', errorMsg);
+      Toast.show({ type: 'error', text1: 'Error', text2: errorMsg });
     } finally {
       setIsLoading(false);
     }

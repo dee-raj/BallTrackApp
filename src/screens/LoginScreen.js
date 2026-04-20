@@ -8,6 +8,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,13 +21,13 @@ export default function LoginScreen({ navigation }) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please enter email and password' });
       return;
     }
 
     const isValidEmail = (email) => /\S+@\S+\.\S+/.test(email);
     if (!isValidEmail(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email');
+      Toast.show({ type: 'error', text1: 'Invalid Email', text2: 'Please enter a valid email' });
       return;
     }
 
@@ -34,7 +35,7 @@ export default function LoginScreen({ navigation }) {
     try {
       await login(email, password);
     } catch (error) {
-      Alert.alert('Login failed', error?.response?.data?.message || 'Check your credentials');
+      Toast.show({ type: 'error', text1: 'Login failed', text2: error?.response?.data?.message || 'Check your credentials' });
     } finally {
       setIsLoading(false);
     }

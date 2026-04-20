@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Alert, Image, Dimensions } from 'react-native';
-import { getMatchScoreboard, recordToss, startInnings, declareInnings, deleteMatch } from '../api/matches';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Alert, Image, Dimensions, TextInput } from 'react-native';
+import { getMatchScoreboard, recordToss, startInnings, declareInnings, deleteMatch, updateMatch } from '../api/matches';
 import { AuthContext } from '../context/AuthContext';
 import { socket, connectSocket, disconnectSocket, joinMatchRoom, leaveMatchRoom } from '../api/socket';
 import { MaterialCommunityIcons, FontAwesome } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import ActionSheet from '../components/ActionSheet';
 
 const { width } = Dimensions.get('window');
 
@@ -15,6 +17,14 @@ export default function MatchDetailsScreen({ route, navigation }) {
   const [showTossModal, setShowTossModal] = useState(false);
   const [tossWinner, setTossWinner] = useState(null);
   const [tossDecision, setTossDecision] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editVenue, setEditVenue] = useState('');
+  const [editOvers, setEditOvers] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionSheetTitle, setActionSheetTitle] = useState('');
+  const [actionSheetOptions, setActionSheetOptions] = useState([]);
 
   useEffect(() => {
     loadScoreboard();
@@ -184,6 +194,18 @@ export default function MatchDetailsScreen({ route, navigation }) {
       <View style={styles.actionsGrid}>
         {!isGuest && (
           <>
+            <TouchableOpacity
+              style={[styles.actionCard, { borderLeftColor: '#8B5CF6' }]}
+              onPress={() => {
+                setEditVenue(match.venue || '');
+                setEditOvers(match.overs?.toString() || '');
+                setShowEditModal(true);
+              }}
+            >
+              <MaterialCommunityIcons name="cog-outline" size={24} color="#8B5CF6" style={styles.actionIcon} />
+              <Text style={styles.actionLabel}>Edit Config</Text>
+            </TouchableOpacity>
+
             {(!match?.tossWinnerId) && (
               <TouchableOpacity
                 style={[styles.actionCard, { borderLeftColor: '#007AFF' }]}
@@ -208,7 +230,11 @@ export default function MatchDetailsScreen({ route, navigation }) {
                     loadScoreboard();
                   } catch (e) {
                     const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed starting innings');
-                    Alert.alert('Error', message);
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Error',
+                      text2: message
+                    })
                   }
                 }}
               >
@@ -231,7 +257,12 @@ export default function MatchDetailsScreen({ route, navigation }) {
                     });
                     loadScoreboard();
                   } catch (e) {
-                    Alert.alert('Error', e?.response?.data?.message || 'Failed starting 2nd innings');
+                    const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed starting 2nd innings');
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Error',
+                      text2: message
+                    })
                   }
                 }}
               >
@@ -244,19 +275,29 @@ export default function MatchDetailsScreen({ route, navigation }) {
               <TouchableOpacity
                 style={[styles.actionCard, { borderLeftColor: '#ef4444' }]}
                 onPress={() => {
-                  Alert.alert('Declare Innings', 'Are you sure you want to declare this innings?', [
-                    { text: 'Cancel', style: 'cancel' },
+                  setActionSheetTitle('Are you sure you want to declare this innings?');
+                  setActionSheetOptions([
                     {
-                      text: 'Declare', style: 'destructive', onPress: async () => {
+                      text: 'Yes, Declare',
+                      destructive: true,
+                      icon: 'flag-variant-outline',
+                      onPress: async () => {
+                        setActionSheetVisible(false);
                         try {
                           await declareInnings(currentInnings.id);
                           loadScoreboard();
                         } catch (e) {
-                          Alert.alert('Error', e?.response?.data?.message || 'Failed declaring innings');
+                          const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed declaring innings');
+                          Toast.show({
+                            type: 'error',
+                            text1: 'Error',
+                            text2: message
+                          })
                         }
                       }
                     }
                   ]);
+                  setActionSheetVisible(true);
                 }}
               >
                 <MaterialCommunityIcons name="stop-circle-outline" size={24} color="#ef4444" style={styles.actionIcon} />
@@ -290,19 +331,29 @@ export default function MatchDetailsScreen({ route, navigation }) {
           <TouchableOpacity
             style={[styles.actionCard, { borderLeftColor: '#dc2626' }]}
             onPress={() => {
-              Alert.alert('Delete Match', 'This action cannot be undone. Are you sure?', [
-                { text: 'Cancel', style: 'cancel' },
+              setActionSheetTitle('Delete Match?');
+              setActionSheetOptions([
                 {
-                  text: 'Delete', style: 'destructive', onPress: async () => {
+                  text: 'Delete Permanently',
+                  destructive: true,
+                  icon: 'trash-can-outline',
+                  onPress: async () => {
+                    setActionSheetVisible(false);
                     try {
                       await deleteMatch(matchId);
                       navigation.goBack();
                     } catch (e) {
-                      Alert.alert('Error', e?.response?.data?.message || 'Cannot delete match');
+                      const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Cannot delete match');
+                      Toast.show({
+                        type: 'error',
+                        text1: 'Error',
+                        text2: message
+                      })
                     }
                   }
                 }
               ]);
+              setActionSheetVisible(true);
             }}
           >
             <MaterialCommunityIcons name="trash-can-outline" size={24} color="#dc2626" style={styles.actionIcon} />
@@ -362,7 +413,11 @@ export default function MatchDetailsScreen({ route, navigation }) {
                 style={styles.modalSubmit}
                 onPress={async () => {
                   if (!tossWinner || !tossDecision) {
-                    Alert.alert('Error', 'Select Winner and Decision');
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Error',
+                      text2: 'Select Winner and Decision'
+                    })
                     return;
                   }
                   try {
@@ -373,7 +428,11 @@ export default function MatchDetailsScreen({ route, navigation }) {
                     loadScoreboard();
                   } catch (e) {
                     const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Failed recording toss');
-                    Alert.alert('Error', message);
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Error',
+                      text2: message
+                    })
                   }
                 }}
               >
@@ -383,6 +442,78 @@ export default function MatchDetailsScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showEditModal} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Update Match Config</Text>
+
+            <View style={{ marginBottom: 15 }}>
+              <Text style={styles.modalSubtitle}>VENUE</Text>
+              <TextInput
+                style={styles.textInput}
+                value={editVenue}
+                onChangeText={setEditVenue}
+                placeholder="e.g. Wankhede Stadium"
+              />
+            </View>
+
+            <View style={{ marginBottom: 15 }}>
+              <Text style={styles.modalSubtitle}>OVERS</Text>
+              <TextInput
+                style={styles.textInput}
+                value={editOvers}
+                onChangeText={setEditOvers}
+                keyboardType="number-pad"
+                placeholder="e.g. 20"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setShowEditModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmit}
+                disabled={isUpdating}
+                onPress={async () => {
+                  try {
+                    setIsUpdating(true);
+                    await updateMatch(matchId, {
+                      venue: editVenue || undefined,
+                      overs: parseInt(editOvers) || 20
+                    });
+                    setShowEditModal(false);
+                    loadScoreboard();
+                  } catch (e) {
+                    const message = e?.response?.data?.errors ? e.response.data.errors.join(', ') : (e?.response?.data?.message || 'Could not update match');
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Error',
+                      text2: message
+                    });
+                  } finally {
+                    setIsUpdating(false);
+                  }
+                }}
+              >
+                {isUpdating ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalSubmitText}>Save Changes</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        title={actionSheetTitle}
+        options={actionSheetOptions}
+        onCancel={() => setActionSheetVisible(false)}
+      />
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -654,7 +785,8 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '90%',
     backgroundColor: 'white',
-    borderRadius: 24,
+    borderTopLeftRadius: 24,
+    borderBottomRightRadius: 24,
     padding: 24,
     elevation: 20,
   },
@@ -733,6 +865,16 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  textInput: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    color: '#1E293B',
+    fontWeight: 'bold',
   },
 });
 

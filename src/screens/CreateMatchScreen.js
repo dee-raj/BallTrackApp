@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getTeams } from '../api/teams';
 import { getTournaments } from '../api/tournaments';
 import { createMatch } from '../api/matches';
+import Toast from 'react-native-toast-message';
 
 
 const { width } = Dimensions.get('window');
@@ -32,17 +33,17 @@ export default function CreateMatchScreen({ navigation }) {
       setTeams(teamsData);
       setTournaments(tournamentsData);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load data');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to load data' });
     }
   };
 
   const handleCreate = async () => {
     if (!homeTeamId || !awayTeamId || !overs) {
-      Alert.alert('Error', 'Please select teams and overs');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please select teams and overs' });
       return;
     }
     if (homeTeamId === awayTeamId) {
-      Alert.alert('Error', 'Home and Away team must be different');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Home and Away team must be different' });
       return;
     }
 
@@ -58,11 +59,10 @@ export default function CreateMatchScreen({ navigation }) {
         venue: venue || undefined,
       });
 
-      Alert.alert('Success', 'Match Created!', [
-        { text: 'OK', onPress: () => navigation.replace('MatchDetails', { matchId: match.id }) }
-      ]);
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Match Created!' });
+      setTimeout(() => navigation.replace('MatchDetails', { matchId: match.id }), 1500);
     } catch (e) {
-      Alert.alert('Error', e?.response?.data?.message || 'Could not create match');
+      Toast.show({ type: 'error', text1: 'Error', text2: e?.response?.data?.message || 'Could not create match' });
     } finally {
       setLoading(false);
     }
@@ -89,18 +89,18 @@ export default function CreateMatchScreen({ navigation }) {
   );
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={{ flex: 1 }}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Start New Match</Text>
-            <Text style={styles.subtitle}>Fill in the details to begin scoring</Text>
-          </View>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          <View style={{ flex: 1 }}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Start New Match</Text>
+              <Text style={styles.subtitle}>Fill in the details to begin scoring</Text>
+            </View>
 
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             {renderTeamPicker(homeTeamId, setHomeTeamId, "Home Team")}
             {renderTeamPicker(awayTeamId, setAwayTeamId, "Away Team")}
 
@@ -124,10 +124,10 @@ export default function CreateMatchScreen({ navigation }) {
                       onPress={() => setTournamentId(t.id)}
                     >
                       <View style={styles.logoContainer}>
-                        <MaterialCommunityIcons 
-                          name={t.type === 'league' ? 'trophy-outline' : 'tournament'} 
-                          size={30} 
-                          color={tournamentId === t.id ? '#007AFF' : '#94A3B8'} 
+                        <MaterialCommunityIcons
+                          name={t.type === 'league' ? 'trophy-outline' : 'tournament'}
+                          size={30}
+                          color={tournamentId === t.id ? '#007AFF' : '#94A3B8'}
                         />
                       </View>
                       <Text style={[styles.teamName, tournamentId === t.id && styles.teamNameActive]} numberOfLines={1}>{t.name}</Text>
@@ -187,10 +187,10 @@ export default function CreateMatchScreen({ navigation }) {
               </View>
             </TouchableOpacity>
             <View style={{ height: 40 }} />
-          </ScrollView>
-        </View>
+          </View>
+        </ScrollView>
       </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+    </KeyboardAvoidingView >
   );
 }
 

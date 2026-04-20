@@ -4,6 +4,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getMatches, deleteMatch } from '../api/matches';
 import { AuthContext } from '../context/AuthContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import ActionSheet from '../components/ActionSheet';
 
 const { width } = Dimensions.get('window');
 const horizontalPadding = width * 0.05;
@@ -14,6 +16,9 @@ export default function DashboardScreen({ navigation }) {
   const [deletingId, setDeletingId] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const { isGuest, user, logout } = useContext(AuthContext);
+
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionSheetOptions, setActionSheetOptions] = useState([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -34,33 +39,36 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const handleDeleteMatch = (match) => {
-    Alert.alert(
-      'Delete Match',
-      `Delete match: ${match.homeTeam.name} vs ${match.awayTeam.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeletingId(match.id);
-              await deleteMatch(match.id);
-              loadMatches();
-            } catch (e) {
-              Alert.alert('Error', 'Failed to delete match');
-            } finally {
-              setDeletingId(null);
-            }
+    setActionSheetOptions([
+      {
+        text: 'Delete Permanently',
+        destructive: true,
+        icon: 'trash-can-outline',
+        onPress: async () => {
+          setActionSheetVisible(false);
+          try {
+            setDeletingId(match.id);
+            await deleteMatch(match.id);
+            loadMatches();
+          } catch (e) {
+            Toast.show({
+              type: 'error',
+              text1: 'Error',
+              text2: 'Failed to delete match'
+            })
+          } finally {
+            setDeletingId(null);
           }
         }
-      ]
-    );
+      }
+    ]);
+    setActionSheetVisible(true);
   };
 
   const renderMatch = ({ item }) => {
     const isLive = item.matchStatus === 'live' || item.matchStatus === 'in_progress' || item.matchStatus === 'second_innings';
     const isCompleted = item.matchStatus === 'completed';
+    const isUpcoming = item.matchStatus === 'tea_break';
     const matchDate = new Date(item.matchDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
     // Linking scores to specific teams regardless of batting order
@@ -69,7 +77,13 @@ export default function DashboardScreen({ navigation }) {
 
     return (
       <TouchableOpacity
-        style={[styles.matchCard, deletingId === item.id && styles.dimmed]}
+        style={[
+          styles.matchCard,
+          deletingId === item.id && styles.dimmed,
+          isLive && styles.liveMatchCard,
+          isCompleted && styles.completedMatchCard,
+          isUpcoming && styles.upcomingMatchCard
+        ]}
         onPress={() => navigation.navigate('MatchDetails', { matchId: item.id })}
       >
         <View style={styles.cardHeader}>
@@ -286,6 +300,13 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
       )}
+
+      <ActionSheet
+        visible={actionSheetVisible}
+        title={"Are you sure? you want to delete this match?"}
+        options={actionSheetOptions}
+        onCancel={() => setActionSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -404,6 +425,21 @@ const styles = StyleSheet.create({
   dimmed: {
     opacity: 0.5,
   },
+  liveMatchCard: {
+    borderWidth: 2,
+    backgroundColor: '#ffeeeeff',
+    borderColor: '#EF4444',
+  },
+  completedMatchCard: {
+    borderWidth: 2,
+    backgroundColor: '#f2fff6ff',
+    borderColor: '#15803D',
+  },
+  upcomingMatchCard: {
+    borderWidth: 2,
+    backgroundColor: '#fff8f1ff',
+    borderColor: '#f1e257ff',
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -417,9 +453,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 10,
   },
-  statusLive: { backgroundColor: '#FEF2F2' },
-  statusCompleted: { backgroundColor: '#F0FDF4' },
-  statusUpcoming: { backgroundColor: '#F8FAFC' },
+  statusLive: { backgroundColor: '#fccdcdff' },
+  statusCompleted: { backgroundColor: '#b7ffceff' },
+  statusUpcoming: { backgroundColor: '#f8ec83ff' },
   liveDot: {
     width: 6,
     height: 6,
@@ -452,18 +488,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   teamContainer: {
     flex: 1,
     alignItems: 'center',
   },
   teamBadge: {
-    width: 50,
-    height: 50,
+    width: 60,
+    height: 60,
     borderRadius: 15,
     backgroundColor: '#F8FAFC',
-    marginBottom: 8,
+    marginBottom: 2,
   },
   teamName: {
     fontSize: 13,
@@ -496,7 +532,7 @@ const styles = StyleSheet.create({
   resultPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0FDF4',
+    backgroundColor: '#a7ffc1ff',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 10,
@@ -506,7 +542,7 @@ const styles = StyleSheet.create({
   resultPillText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#15803D',
+    color: '#01531fff',
     marginLeft: 6,
   },
   venueRow: {
@@ -540,7 +576,7 @@ const styles = StyleSheet.create({
   },
   navBarContainer: {
     position: 'absolute',
-    bottom: 30,
+    bottom: 12,
     left: 20,
     right: 20,
   },
@@ -570,7 +606,7 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     color: '#94A3B8',
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '900',
   }
 });
